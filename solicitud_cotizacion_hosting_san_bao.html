@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solicitud Formal de Cotización (RFP) Hosting Cloud VPS — Sistema Integral San Bao</title>
+  <style>
+    :root {
+      --primary: #7f1d1d;
+      --primary-light: #fef2f2;
+      --slate-900: #0f172a;
+      --slate-700: #334155;
+      --slate-500: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--slate-900);
+      background: #f8fafc;
+      margin: 0;
+      padding: 28px 16px;
+      line-height: 1.5;
+      font-size: 13.5px;
+    }
+    .toolbar {
+      max-width: 980px;
+      margin: 0 auto 16px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      padding: 12px 18px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+    .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 12px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-outline { background: #fff; color: var(--slate-700); border-color: var(--border); }
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 36px 42px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid var(--primary);
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .title-block h1 {
+      margin: 0 0 6px 0;
+      font-size: 21px;
+      color: var(--primary);
+      letter-spacing: -0.02em;
+    }
+    .title-block p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--slate-700);
+      font-weight: 600;
+    }
+    .meta-box {
+      text-align: right;
+      font-size: 11.5px;
+      color: var(--slate-700);
+      background: var(--primary-light);
+      border: 1px solid #fecaca;
+      padding: 10px 14px;
+      border-radius: 10px;
+      min-width: 260px;
+    }
+    h2 {
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      border-left: 4px solid var(--primary);
+      padding-left: 10px;
+      margin: 24px 0 12px 0;
+    }
+    .letter-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-left: 4px solid #047857;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 18px 0;
+      font-size: 12.5px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f1f5f9;
+      color: var(--slate-900);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .billing-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .billing-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      background: #f8fafc;
+    }
+    footer {
+      margin-top: 30px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--slate-500);
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .toolbar { display: none !important; }
+      .page { box-shadow: none; border: none; padding: 0; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div>
+      <strong>Documento Oficial:</strong> <code>solicitud_cotizacion_hosting_san_bao</code> (RFP Proveedores Chile)
+    </div>
+    <div class="toolbar-actions">
+      <a class="btn btn-primary" href="/solicitud_cotizacion_hosting_san_bao.pdf" download>Descargar PDF Oficial</a>
+      <button class="btn btn-outline" onclick="window.print()">Imprimir / Guardar PDF</button>
+      <a class="btn btn-outline" href="/informe_tecnico_hosting_san_bao.html">Ver Informe Técnico de Hosting</a>
+    </div>
+  </div>
+
+  <div class="page">
+    <header>
+      <div class="title-block">
+        <h1>SOLICITUD FORMAL DE COTIZACIÓN (RFP) — SERVICIO DE HOSTING CLOUD VPS</h1>
+        <p>Sistema Integral San Bao — Instituto de Medicina China Clásica SpA &amp; Servicios Clínicos San Bao SpA</p>
+        <p style="font-size:12px; color:#64748b; margin-top:4px;">
+          Para envío a proveedores nacionales: HostingPlus.cl • HN Datacenter (hn.cl) • EcoHosting.cl • Entel Cloud / Gtd
+        </p>
+      </div>
+      <div class="meta-box">
+        <div><strong>Código RFP:</strong> COT-HOST-SANBAO-2026</div>
+        <div><strong>Facturación:</strong> Factura Electrónica SII ($CLP + IVA)</div>
+        <div><strong>Ubicación Física:</strong> Datacenter Santiago de Chile</div>
+        <div><strong>SLA Requerido:</strong> 99.9% (Lun–Sáb 08:30–22:30)</div>
+      </div>
+    </header>
+
+    <h2>1. Carta / Correo Tipo para Envío a Ejecutivos Comerciales</h2>
+    <div class="letter-box">
+      <p style="margin-top:0;"><strong>Asunto:</strong> Solicitud de Cotización Formal — Servidor Cloud VPS Linux en Chile (4 vCPU / 8 GB RAM / 150 GB NVMe) — Holding San Bao SpA</p>
+      <p><strong>Estimado Equipo Comercial:</strong></p>
+      <p>Junto con saludar, en representación de <strong>Instituto de Medicina China Clásica SpA (RUT 77.123.456-9)</strong> y <strong>Servicios Clínicos San Bao SpA (RUT 76.987.654-5)</strong>, solicitamos a ustedes una <strong>cotización formal con Factura Electrónica Afecta SII (DTE 33) en pesos chilenos ($CLP + IVA)</strong> para la contratación de un <strong>Servidor Cloud VPS Dedicado (KVM)</strong> alojado físicamente en <strong>Datacenter en Santiago de Chile</strong>, destinado a operar nuestra plataforma institucional clínico-académica (<strong>Sistema Integral San Bao</strong>).</p>
+      <p style="margin-bottom:0;">Agradecemos incluir en su propuesta el detalle técnico y comercial según el pliego especificado a continuación.</p>
+    </div>
+
+    <h2>2. Pliego de Especificaciones Técnicas Solicitadas</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:52px;">Ítem</th>
+          <th style="width:190px;">Componente</th>
+          <th>Requerimiento Mínimo Exigido</th>
+          <th>Uso Institucional en Producción</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>01</strong></td>
+          <td><strong>Virtualización</strong></td>
+          <td>KVM (Kernel-based Virtual Machine) con recursos dedicados garantizados.</td>
+          <td>Aislamiento completo de kernel para contenedores Docker en producción.</td>
+        </tr>
+        <tr>
+          <td><strong>02</strong></td>
+          <td><strong>Procesador (CPU)</strong></td>
+          <td><strong>4 vCPU dedicadas</strong> (AMD EPYC o Intel Xeon Enterprise).</td>
+          <td>Ejecución concurrente de API FastAPI (Uvicorn), Nginx y PostgreSQL 16.</td>
+        </tr>
+        <tr>
+          <td><strong>03</strong></td>
+          <td><strong>Memoria RAM</strong></td>
+          <td><strong>8 GB RAM DDR4 / DDR5</strong> (cotizar escalamiento opcional a 16 GB RAM).</td>
+          <td>Buffer pool PostgreSQL 16 (10 esquemas, 78 tablas) y workers de aplicación.</td>
+        </tr>
+        <tr>
+          <td><strong>04</strong></td>
+          <td><strong>Almacenamiento</strong></td>
+          <td><strong>150 GB SSD NVMe Enterprise</strong> (RAID-10).</td>
+          <td>Base de datos transaccional, fichas clínicas MTC, DTE SII y respaldos locales.</td>
+        </tr>
+        <tr>
+          <td><strong>05</strong></td>
+          <td><strong>Sistema Operativo</strong></td>
+          <td><strong>Ubuntu Server 22.04 LTS o 24.04 LTS (64-bit)</strong> con acceso SSH <code>root</code>.</td>
+          <td>Despliegue nativo de <code>Docker Engine</code> y <code>Docker Compose v2</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>06</strong></td>
+          <td><strong>Red y Conectividad</strong></td>
+          <td><strong>1 IPv4 pública estática dedicada</strong> + enlace nacional PIT Chile (&lt; 15 ms).</td>
+          <td>Dominio institucional, SSL/TLS, Webpay Plus y timbraje electrónico SII.</td>
+        </tr>
+        <tr>
+          <td><strong>07</strong></td>
+          <td><strong>Tráfico Mensual</strong></td>
+          <td><strong>Mínimo 2 TB / mes</strong> (preferentemente tráfico nacional ilimitado).</td>
+          <td>Operación de los 7 portales web y móviles en Sedes Santiago y Viña del Mar.</td>
+        </tr>
+        <tr>
+          <td><strong>08</strong></td>
+          <td><strong>Puertos y Seguridad</strong></td>
+          <td>Puertos <code>80</code>, <code>443</code> y <code>22</code> habilitados + mitigación anti-DDoS.</td>
+          <td>Integración con proxy inverso TLS 1.3 y Cloudflare WAF/CDN.</td>
+        </tr>
+        <tr>
+          <td><strong>09</strong></td>
+          <td><strong>Nivel de Servicio (SLA)</strong></td>
+          <td><strong>SLA &gt;= 99.9% mensual</strong> garantizado (horario crítico Lun–Sáb 08:30–22:30 hrs).</td>
+          <td>Continuidad operativa en atención de boxes clínicos y marcaje QR MINSAL.</td>
+        </tr>
+        <tr>
+          <td><strong>10</strong></td>
+          <td><strong>Respaldos (Snapshots)</strong></td>
+          <td>Servicio de <strong>Snapshots / Backup automatizado de máquina completa</strong>.</td>
+          <td>Respaldo de infraestructura complementario al <code>pg_dump</code> diario de las 03:00 AM.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>3. Condiciones Comerciales a Incluir en la Cotización</h2>
+    <ol style="margin: 8px 0 18px 18px; padding:0;">
+      <li><strong>Valores netos y totales con IVA ($CLP)</strong> para pago <strong>Mensual</strong>, <strong>Semestral</strong> y <strong>Anual</strong> (indicando descuentos por prepago).</li>
+      <li><strong>Costo del servicio de Snapshots / Backups automatizados</strong> en caso de facturarse como ítem adicional.</li>
+      <li><strong>Procedimiento y tarifa de escalamiento futuro (Upgrade en caliente)</strong> a 8 vCPU / 16 GB RAM / 250 GB SSD NVMe.</li>
+      <li><strong>Plazo de activación y entrega de acceso SSH <code>root</code></strong> tras la recepción de la Orden de Compra.</li>
+      <li><strong>Canales de Soporte Técnico 24/7 en Chile</strong> (teléfono de emergencia, tickets prioritarios y SLA de respuesta).</li>
+    </ol>
+
+    <h2>4. Datos Institucionales para Emisión de Cotización y Factura Electrónica SII</h2>
+    <div class="billing-grid">
+      <div class="billing-card">
+        <strong>Entidad 1 — Área Académica:</strong><br />
+        Razón Social: <strong>Instituto de Medicina China Clásica SpA</strong> (<code>Escuela San Bao SpA</code>)<br />
+        RUT: <strong>77.123.456-9</strong><br />
+        Giro: Enseñanza Superior y Perfeccionamiento en Medicina China Clásica
+      </div>
+      <div class="billing-card">
+        <strong>Entidad 2 — Área Asistencial:</strong><br />
+        Razón Social: <strong>Servicios Clínicos San Bao SpA</strong> (<code>Clínica San Bao SpA</code>)<br />
+        RUT: <strong>76.987.654-5</strong><br />
+        Giro: Servicios de Salud Integrativa, Acupuntura y Medicina Tradicional China
+      </div>
+    </div>
+
+    <footer>
+      <div>Solicitud Formal de Cotización (RFP) • Holding San Bao SpA</div>
+      <div>Contacto TI &amp; Finanzas: admin@sanbao.cl • finanzas@sanbao.cl</div>
+    </footer>
+  </div>
+</body>
+</html>

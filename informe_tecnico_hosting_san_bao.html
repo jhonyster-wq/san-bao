@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Informe Técnico de Hosting y Base de Datos PostgreSQL (3NF/BCNF) — Sistema Integral San Bao</title>
+  <style>
+    :root {
+      --primary: #7f1d1d;
+      --primary-light: #fef2f2;
+      --accent: #b45309;
+      --emerald: #047857;
+      --slate-900: #0f172a;
+      --slate-700: #334155;
+      --slate-500: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--slate-900);
+      background: #f8fafc;
+      margin: 0;
+      padding: 28px 16px;
+      line-height: 1.5;
+      font-size: 13.5px;
+    }
+    .toolbar {
+      max-width: 980px;
+      margin: 0 auto 16px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      padding: 12px 18px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+    .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 12px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-outline { background: #fff; color: var(--slate-700); border-color: var(--border); }
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 36px 42px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid var(--primary);
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .title-block h1 {
+      margin: 0 0 6px 0;
+      font-size: 21px;
+      color: var(--primary);
+      letter-spacing: -0.02em;
+    }
+    .title-block p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--slate-700);
+      font-weight: 600;
+    }
+    .meta-box {
+      text-align: right;
+      font-size: 11.5px;
+      color: var(--slate-700);
+      background: var(--primary-light);
+      border: 1px solid #fecaca;
+      padding: 10px 14px;
+      border-radius: 10px;
+      min-width: 250px;
+    }
+    h2 {
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      border-left: 4px solid var(--primary);
+      padding-left: 10px;
+      margin: 26px 0 12px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 18px 0;
+      font-size: 12.5px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f1f5f9;
+      color: var(--slate-900);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin: 14px 0 20px 0;
+    }
+    .kpi-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #f8fafc;
+    }
+    .kpi-card .label { font-size: 11px; color: var(--slate-500); text-transform: uppercase; font-weight: 700; }
+    .kpi-card .val { font-size: 18px; font-weight: 800; color: var(--primary); margin-top: 4px; }
+    .kpi-card .sub { font-size: 11px; color: var(--slate-700); margin-top: 2px; }
+    footer {
+      margin-top: 30px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--slate-500);
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .toolbar { display: none !important; }
+      .page { box-shadow: none; border: none; padding: 0; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div>
+      <strong>Documento Oficial:</strong> <code>informe_tecnico_hosting_san_bao</code> (Versión 2.0)
+    </div>
+    <div class="toolbar-actions">
+      <a class="btn btn-primary" href="/informe_tecnico_hosting_san_bao.pdf" download>Descargar PDF Oficial</a>
+      <button class="btn btn-outline" onclick="window.print()">Imprimir / Guardar PDF</button>
+      <a class="btn btn-outline" href="/solicitud_cotizacion_hosting_san_bao.html">Ver Solicitud de Cotización (RFP)</a>
+    </div>
+  </div>
+
+  <div class="page">
+    <header>
+      <div class="title-block">
+        <h1>INFORME TÉCNICO DE HOSTING, POSTGRESQL (3NF/BCNF) Y ALTA DISPONIBILIDAD</h1>
+        <p>Sistema Integral San Bao — Holding Educacional y Clínico de Medicina China Clásica</p>
+        <p style="font-size:12px; color:#64748b; margin-top:4px;">
+          Instituto de Medicina China Clásica SpA (RUT 77.123.456-9) • Servicios Clínicos San Bao SpA (RUT 76.987.654-5)
+        </p>
+      </div>
+      <div class="meta-box">
+        <div><strong>Código:</strong> INF-HOST-SANBAO-V2</div>
+        <div><strong>Base de Datos:</strong> PostgreSQL 16 (3NF/BCNF)</div>
+        <div><strong>SLA Exigido:</strong> 99.9% (Lun–Sáb 08:30–22:30)</div>
+        <div><strong>Región:</strong> Datacenter Santiago de Chile</div>
+      </div>
+    </header>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="label">Portales Especializados</div>
+        <div class="val">7 Portales RBAC</div>
+        <div class="sub">Separación Dual-SpA estricta</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Normalización PostgreSQL</div>
+        <div class="val">10 Esquemas / 78 Tablas</div>
+        <div class="sub">157 FKs • 292 Índices B-Tree</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Horario Crítico SLA</div>
+        <div class="val">Lun–Sáb 08:30–22:30</div>
+        <div class="sub">99.9% Uptime Garantizado</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Servidor Recomendado</div>
+        <div class="val">4 vCPU / 8 GB RAM</div>
+        <div class="sub">150 GB SSD NVMe en Chile</div>
+      </div>
+    </div>
+
+    <h2>1. Alcance Funcional y Portales Operativos Alojados</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Portal Institucional</th>
+          <th>Rol / Perfil</th>
+          <th>Sociedad SpA</th>
+          <th>Operaciones Críticas Soportadas</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Portal Administrativo</strong></td>
+          <td>Superadmin ERP / Finanzas / RRHH</td>
+          <td><span class="badge badge-amber">Holding Consolidado</span></td>
+          <td>Dashboard Ejecutivo BI, Finanzas &amp; DTE SII (13 sub-áreas), RRHH (Docentes Escuela SpA vs Tutores Clínica SpA), LMS y E-Commerce.</td>
+        </tr>
+        <tr>
+          <td><strong>2. Portal Académico</strong></td>
+          <td>Dirección y Gestión Académica</td>
+          <td><span class="badge badge-red">Escuela San Bao SpA</span></td>
+          <td>Diseño de malla curricular, suma de asignaturas con 1 o 2 docentes activos en RRHH, hoja de vida, notas, congelamientos, traspasos y diplomas.</td>
+        </tr>
+        <tr>
+          <td><strong>3. Portal Clínico MTC</strong></td>
+          <td>Dirección Clínica y Recepción</td>
+          <td><span class="badge badge-green">Clínica San Bao SpA</span></td>
+          <td>Programación de turnos clínicos (Santiago y Viña del Mar), asignación de tutores/practicantes, agenda de boxes y Ficha Clínica MTC (Ley N° 20.584).</td>
+        </tr>
+        <tr>
+          <td><strong>4. Portal de Alumnos</strong></td>
+          <td>Alumno Regular</td>
+          <td><span class="badge badge-red">Escuela San Bao SpA</span></td>
+          <td>Lectura de <strong>Código QR Normativa MINSAL</strong> (entrada/salida exacta en práctica clínica), avance curricular, notas y pago de aranceles en línea.</td>
+        </tr>
+        <tr>
+          <td><strong>5. Portal de Docentes</strong></td>
+          <td>Docente de Cátedra (<code>TEACHER</code>)</td>
+          <td><span class="badge badge-red">Escuela San Bao SpA</span></td>
+          <td>Gestión de cursos asignados, libro de calificaciones ponderadas, control de asistencia de cátedra y material pedagógico.</td>
+        </tr>
+        <tr>
+          <td><strong>6. Portal de Tutores</strong></td>
+          <td>Tutor Clínico (<code>PRACTITIONER</code>)</td>
+          <td><span class="badge badge-green">Clínica San Bao SpA</span></td>
+          <td>Turnos clínicos asignados exclusivamente al tutor, notas de práctica clínica y visación en 1 clic de asistencia QR MINSAL.</td>
+        </tr>
+        <tr>
+          <td><strong>7. Portal de Secretaría</strong></td>
+          <td>Secretaría de Sede</td>
+          <td><span class="badge badge-amber">Escuela / Consulta Clínica</span></td>
+          <td>Consulta de turnos y cursos (Presencial, Semipresencial, Virtual, Híbrido), envío de link de inscripción por correo, seguimiento de práctica y matrícula.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>2. Arquitectura de Software, Normalización PostgreSQL (3NF/BCNF) y Rendimiento</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Capa Tecnológica</th>
+          <th>Especificación de Producción</th>
+          <th>Optimizaciones Implementadas</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Base de Datos Relacional</strong></td>
+          <td><strong>PostgreSQL 16 Alpine</strong> (3NF / BCNF)</td>
+          <td><strong>10 esquemas lógicos</strong> (<code>core</code>, <code>academic</code>, <code>clinical</code>, <code>finance</code>, <code>hr</code>, <code>ecommerce</code>, <code>lms</code>, <code>integrations</code>, <code>bi</code>, <code>audit</code>), <strong>78 tablas</strong>, <strong>157 claves foráneas</strong>, <strong>12 restricciones únicas compuestas</strong> y <strong>292 índices B-Tree</strong>. Catálogos maestros 3NF para Centros de Costo y Unidades de Negocio.</td>
+        </tr>
+        <tr>
+          <td><strong>Backend API</strong></td>
+          <td><strong>FastAPI + Uvicorn ASGI</strong> (Python 3.10+)</td>
+          <td>Compresión <code>GZipMiddleware</code> (reducción &gt;85% en payload), pool de conexiones persistentes (<code>pool_size=20</code>, <code>max_overflow=40</code>, <code>pool_pre_ping=True</code>) y cabecera de telemetría <code>X-Process-Time-Ms</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Frontend Web &amp; Móvil</strong></td>
+          <td><strong>SPA Responsiva</strong> (Desktop, Tablet Box, Móvil QR)</td>
+          <td>Coalescing de iconos por <code>requestAnimationFrame</code>, caché GET con deduplicación de peticiones en vuelo, lazy-loading por portal activo y contención CSS.</td>
+        </tr>
+        <tr>
+          <td><strong>Proxy Inverso &amp; Seguridad</strong></td>
+          <td><strong>Nginx Alpine + TLS 1.3</strong></td>
+          <td>Certificados SSL Let's Encrypt / Cloudflare WAF Santiago, respaldos diarios automatizados <code>pg_dump</code> a las 03:00 AM.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>3. Dimensionamiento del Servidor (Sizing Cloud VPS en Chile)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Componente</th>
+          <th>Mínimo Producción (Fase 1)</th>
+          <th>Recomendado Escalable (Fase 2)</th>
+          <th>Justificación Operacional</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Procesador (CPU)</strong></td>
+          <td><strong>4 vCPU dedicadas (KVM)</strong></td>
+          <td>6 a 8 vCPU dedicadas</td>
+          <td>Workers concurrentes FastAPI + PostgreSQL 16 + emisión de DTE SII y reportes PDF.</td>
+        </tr>
+        <tr>
+          <td><strong>Memoria RAM</strong></td>
+          <td><strong>8 GB RAM DDR4 / DDR5</strong></td>
+          <td>16 GB RAM DDR4 / DDR5</td>
+          <td><code>shared_buffers</code> PostgreSQL (2 GB) + procesos Uvicorn + Nginx + SO.</td>
+        </tr>
+        <tr>
+          <td><strong>Almacenamiento</strong></td>
+          <td><strong>150 GB SSD NVMe</strong></td>
+          <td>250 GB SSD NVMe</td>
+          <td>Base de datos 78 tablas, fichas clínicas MTC, certificados/diplomas y respaldos locales.</td>
+        </tr>
+        <tr>
+          <td><strong>Red y Ubicación</strong></td>
+          <td><strong>1 IPv4 fija en Santiago de Chile</strong></td>
+          <td>1 IPv4 fija + Red 1 Gbps</td>
+          <td>Latencia nacional &lt; 15 ms (PIT Chile) y soberanía de datos clínicos (Ley N° 20.584).</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. Comparativa de Proveedores en Chile (Facturación Electrónica SII en $CLP + IVA)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Proveedor Nacional</th>
+          <th>Plan Recomendado</th>
+          <th>Configuración Técnica</th>
+          <th>Valor Mensual Ref.</th>
+          <th>Ventaja Principal</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. HostingPlus.cl</strong></td>
+          <td>VPS Medio Plus (VPS 2)</td>
+          <td>4 vCore • 8 GB RAM • 150 GB SSD NVMe</td>
+          <td><strong>$99.900 CLP + IVA</strong></td>
+          <td>Datacenter Tier III en Santiago, KVM dedicado y soporte 24/7 en Chile.</td>
+        </tr>
+        <tr>
+          <td><strong>2. HN Datacenter (hn.cl)</strong></td>
+          <td>VPS Premium Linux</td>
+          <td>4 vCPU • 8 GB RAM • 150 GB SSD</td>
+          <td><strong>$90.900 CLP + IVA</strong></td>
+          <td>Datacenter propio en Santiago (Ñuñoa), baja latencia PIT Chile y soporte Linux.</td>
+        </tr>
+        <tr>
+          <td><strong>3. EcoHosting.cl</strong></td>
+          <td>VPS Cloud XL</td>
+          <td>4 vCPU • 8 GB RAM • 120 GB SSD NVMe</td>
+          <td><strong>$85.900 CLP + IVA</strong></td>
+          <td>Almacenamiento NVMe rápido, facturación electrónica SII inmediata.</td>
+        </tr>
+        <tr>
+          <td><strong>4. Entel Cloud / Gtd</strong></td>
+          <td>Cloud Server IaaS Salud</td>
+          <td>4 vCPU • 8 GB RAM • 200 GB SAN</td>
+          <td><strong>$180.000+ CLP + IVA</strong></td>
+          <td>SLA 99.95% corporativo y cumplimiento normativo empresarial.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <footer>
+      <div>Sistema Integral San Bao • Arquitectura Normalizada PostgreSQL 16 (3NF/BCNF)</div>
+      <div>Documento Técnico Oficial para Directorio y Proveedores TI</div>
+    </footer>
+  </div>
+</body>
+</html>

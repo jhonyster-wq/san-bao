@@ -511,7 +511,7 @@ def get_clinical_qr_page(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/student-portal/pay-installment", response_model=APIResponse[Dict[str, Any]], summary="Portal del Alumno (Escuela San Bao SpA): Pagar cuota del Compromiso Arancelario y emitir DTE 41")
+@router.post("/student-portal/pay-installment", response_model=APIResponse[Dict[str, Any]], summary="Portal del Alumno: Pagar cuota del Compromiso Arancelario y emitir DTE 41")
 def pay_student_installment(
     payload: StudentPayInstallmentRequest,
     db: Session = Depends(get_db),
@@ -521,7 +521,7 @@ def pay_student_installment(
         res = service.pay_student_installment(payload)
         return APIResponse(
             message=(
-                f"Cuota #{res['installment_number']} pagada exitosamente en Escuela San Bao SpA "
+                f"Cuota #{res['installment_number']} pagada exitosamente "
                 f"(${int(res['paid_amount']):,} CLP). Comprobante DTE 41 emitido."
             ).replace(",", "."),
             data=res,
@@ -532,7 +532,7 @@ def pay_student_installment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/tutor-portal/overview", response_model=APIResponse[Dict[str, Any]], summary="Portal de Tutores Clínicos (Clínica San Bao SpA): Turnos asignados exclusivamente al tutor, alumnos en práctica, horas QR MINSAL y evaluación")
+@router.get("/tutor-portal/overview", response_model=APIResponse[Dict[str, Any]], summary="Portal de Tutores Clínicos: Turnos asignados exclusivamente al tutor, alumnos en práctica, horas QR MINSAL y evaluación")
 def get_tutor_portal_overview(
     tutor_id: Optional[str] = Query(None, description="RUT, ID o nombre del tutor clínico"),
     tutor_name: Optional[str] = Query(None, description="Nombre o RUT del tutor clínico"),
@@ -557,7 +557,7 @@ def tutor_approve_clinical_attendance(
         return APIResponse(
             message=(
                 f"Se aprobaron {res['approved_records_count']} registro(s) MINSAL "
-                f"({res['total_hours_accredited']} hrs prácticas acreditadas por Tutor de Clínica San Bao SpA)."
+                f"({res['total_hours_accredited']} hrs prácticas acreditadas por Tutor)."
             ),
             data=res,
         )

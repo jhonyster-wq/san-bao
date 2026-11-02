@@ -128,7 +128,7 @@
             sanbao: {
               navy: '#0C1D36',      // Barra lateral y fondos profundos
               dark: '#0F2447',      // Azul oscuro corporativo
-              primary: '#1A56B2',   // Azul San Bao oficial del logotipo (神, 精, 氣)
+              primary: '#1A56B2',   // Azul San Bao oficial del logotipo (精 Jing, 氣 Qi, 神 Shen)
               hover: '#15458F',     // Hover interactivo
               light: '#2563EB',     // Azul acento
               soft: '#EBF2FC',      // Fondo suave para badges
@@ -184,7 +184,7 @@
           <div class="flex flex-col">
             <span class="brand-serif font-bold text-base tracking-wider text-white leading-tight">SAN BAO</span>
             <span class="text-[9px] text-blue-300 font-semibold tracking-wider uppercase">Escuela Med. China Clásica</span>
-            <span class="text-[8px] text-blue-400/80 font-mono tracking-widest">神 • 精 • 氣</span>
+            <span class="text-[8px] text-blue-400/80 font-mono tracking-widest">精 • 氣 • 神 • Jing • Qi • Shen</span>
           </div>
         </div>
         <button onclick="toggleMobileSidebar(false)" class="lg:hidden text-slate-300 hover:text-white p-1.5 rounded-lg cursor-pointer">✕</button>
@@ -363,23 +363,6 @@
               <span id="header-locked-portal-title" class="text-xs font-extrabold text-emerald-950">Portal Exclusivo Activo</span>
             </div>
           </div>
-
-          <!-- SELECTOR RÁPIDO DE DEMOS SEPARADOS PARA CLIENTE (ACADEMIA / CLÍNICA) -->
-          <div id="header-demo-mode-switcher" class="flex items-center gap-1.5 bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-sm border border-slate-700 text-xs">
-            <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 px-1 hidden xl:inline">🎬 Demos Cliente:</span>
-            <button type="button" id="btn-hdr-demo-academia" onclick="activateClientDemoMode('academia')" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] flex items-center gap-1 transition cursor-pointer" title="Activar Demo Independiente de Academia">
-              <span>🎓 Demo Academia</span>
-            </button>
-            <button type="button" id="btn-hdr-demo-clinica" onclick="activateClientDemoMode('clinica')" class="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] flex items-center gap-1 transition cursor-pointer" title="Activar Demo Independiente de Clínica">
-              <span>🩺 Demo Clínica</span>
-            </button>
-            <button type="button" id="btn-hdr-demo-all" onclick="activateClientDemoMode('all')" class="hidden px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-slate-200 font-bold text-[10px] transition cursor-pointer" title="Volver a la vista completa del ERP">
-              <span>Vista Completa</span>
-            </button>
-            <a href="/demo" target="_blank" class="px-2 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/30 font-extrabold text-[10px] transition" title="Abrir Centro de Demostración en pestaña nueva">
-              Portal Demos ↗
-            </a>
-          </div>
         </div>
 
         <!-- PERFIL ACTIVO + CERRAR SESIÓN -->
@@ -403,51 +386,6 @@
 
       <!-- CONTENIDO PRINCIPAL -->
       <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
-
-        <!-- ========================================================================= -->
-        <!-- BARRA INTERACTIVA DE DEMOSTRACIÓN AL CLIENTE (ACADEMIA / CLÍNICA SEPARADAS) -->
-        <!-- ========================================================================= -->
-        <div id="client-demo-tour-banner" class="hidden rounded-3xl p-5 shadow-lg border-2 space-y-4 transition-all">
-          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-white/15 pb-3">
-            <div class="space-y-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <span id="client-demo-badge" class="px-3 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-extrabold uppercase tracking-wider">
-                  MODO PRESENTACIÓN CLIENTE
-                </span>
-                <span id="client-demo-url-pill" class="px-2.5 py-0.5 rounded-md bg-black/25 text-amber-300 font-mono text-[10px] font-bold">
-                  /demo-academia
-                </span>
-              </div>
-              <h2 id="client-demo-title" class="brand-serif text-xl sm:text-2xl font-bold text-white">
-                Demo Independiente
-              </h2>
-              <p id="client-demo-subtitle" class="text-xs text-white/85">
-                Seleccione cualquiera de las funcionalidades numeradas para mostrarla en vivo al cliente.
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-              <button type="button" onclick="activateClientDemoMode('academia')" id="tour-switch-academia-btn" class="px-3.5 py-2 rounded-xl bg-white text-indigo-950 font-extrabold text-xs shadow cursor-pointer">
-                🎓 Demo Academia
-              </button>
-              <button type="button" onclick="activateClientDemoMode('clinica')" id="tour-switch-clinica-btn" class="px-3.5 py-2 rounded-xl bg-white text-rose-950 font-extrabold text-xs shadow cursor-pointer">
-                🩺 Demo Clínica
-              </button>
-              <button type="button" onclick="activateClientDemoMode('all')" class="px-3 py-2 rounded-xl bg-black/25 hover:bg-black/40 text-white border border-white/20 font-bold text-xs cursor-pointer">
-                ✕ Salir del Modo Demo
-              </button>
-            </div>
-          </div>
-
-          <!-- Botonera Paso a Paso de Funcionalidades del Demo Activo -->
-          <div class="space-y-1.5">
-            <div class="text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
-              👇 Recorrido Guiado de Funcionalidades (Haga clic en cada punto para mostrar al cliente):
-            </div>
-            <div id="client-demo-steps-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              <!-- Se puebla dinámicamente según sea Demo Academia o Demo Clínica -->
-            </div>
-          </div>
-        </div>
 
         <!-- TAB 1: DASHBOARD EJECUTIVO -->
         <div id="tab-dashboard" class="tab-pane space-y-6">
@@ -546,7 +484,7 @@
                   <span>Clínica: Servicios Clínicos San Bao</span>
                 </h3>
                 <span class="text-xs font-bold px-3 py-1 bg-[#EBF2FC] text-[#1A56B2] rounded-full border border-blue-200">
-                  Clínica SpA
+                  Clínica
                 </span>
               </div>
               <div class="grid grid-cols-2 gap-3">
@@ -630,7 +568,7 @@
             <div class="space-y-1">
               <div class="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wider text-blue-200 font-bold">
                 <i data-lucide="graduation-cap" class="w-4 h-4 text-blue-300"></i>
-                <span>Expediente del Alumno • Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)</span>
+                <span>Expediente del Alumno</span>
                 <span class="px-2 py-0.5 rounded-full bg-amber-400/25 border border-amber-300/40 text-amber-200 text-[10px] font-extrabold">ENTIDAD: ESCUELA SAN BAO SpA</span>
               </div>
               <h1 id="st-portal-banner-name" class="brand-serif text-2xl font-bold">Diego Valenzuela</h1>
@@ -757,7 +695,7 @@
               <div class="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 class="font-bold text-slate-800 flex items-center gap-2">
                   <i data-lucide="credit-card" class="w-5 h-5 text-[#1A56B2]"></i>
-                  <span>Compromiso Arancelario, Cuotas &amp; Práctica Clínica (Escuela San Bao SpA)</span>
+                  <span>Compromiso Arancelario, Cuotas &amp; Práctica Clínica</span>
                 </h3>
                 <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
                   Pago de Cuota Online • Webpay Plus / DTE 41
@@ -775,7 +713,7 @@
                     <strong>Tratamiento:</strong> Acupuntura en Shenmen (C7), Taichong (H3), Sanyinjiao (B6) y moxibustión indirecta.
                   </p>
                   <div class="pt-2 border-t border-blue-200/80 flex justify-between items-center text-[11px] text-[#1A56B2]">
-                    <span>Tutor Clínico: Dr. Roberto Gómez (Clínica San Bao SpA)</span>
+                    <span>Tutor Clínico: Dr. Roberto Gómez</span>
                     <span class="font-bold">+4 Horas Acreditadas</span>
                   </div>
                 </div>
@@ -792,7 +730,7 @@
                 </div>
                 <h3 class="font-bold text-base text-slate-900">Lectura de QR para Contabilización de Horas de Práctica Clínica y Resumen MINSAL</h3>
                 <p class="text-xs text-slate-500">
-                  Escanee o despliegue el lector QR oficial desde su portal para registrar y guardar la <strong>hora y fecha exacta de Entrada y Salida</strong> exigida por el Ministerio de Salud. Sus horas son visadas en el Portal de Tutores (Clínica San Bao SpA).
+                  Escanee o despliegue el lector QR oficial desde su portal para registrar y guardar la <strong>hora y fecha exacta de Entrada y Salida</strong> exigida por el Ministerio de Salud. Sus horas son visadas en el Portal de Tutores.
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-2">
@@ -825,7 +763,7 @@
                   </svg>
                 </div>
                 <span class="font-mono text-[11px] font-bold text-amber-300">QR-MINSAL-SANBAO-2026</span>
-                <p class="text-[11px] text-blue-200 leading-tight">Código Oficial Box Clínico • Escuela San Bao SpA &amp; Clínica San Bao SpA</p>
+                <p class="text-[11px] text-blue-200 leading-tight">Código Oficial Box Clínico</p>
               </div>
 
               <!-- Columna Página Desplegada por el QR con Reloj en Vivo y Botón Guardar Hora y Fecha Actual -->
@@ -858,7 +796,7 @@
                     </select>
                   </div>
                   <div>
-                    <label class="block text-[10px] font-bold text-blue-200 uppercase mb-1">Tutor Clínico (Clínica SpA)</label>
+                    <label class="block text-[10px] font-bold text-blue-200 uppercase mb-1">Tutor Clínico</label>
                     <select id="st-qr-tutor" class="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-white/20 text-white font-semibold text-xs">
                       <option value="Dr. Roberto Gómez Valdés">Dr. Roberto Gómez Valdés</option>
                       <option value="Dra. Marcela Pérez Morales">Dra. Marcela Pérez Morales</option>
@@ -899,7 +837,7 @@
                       <th class="py-2.5 px-3">Hora Salida</th>
                       <th class="py-2.5 px-3">Horas</th>
                       <th class="py-2.5 px-3">Sede / Box Clínico</th>
-                      <th class="py-2.5 px-3">Tutor Clínico (Clínica SpA)</th>
+                      <th class="py-2.5 px-3">Tutor Clínico</th>
                       <th class="py-2.5 px-3">Estado Visación</th>
                     </tr>
                   </thead>
@@ -947,8 +885,8 @@
                 </select>
                 <select id="sec-activity-area-filter" onchange="renderSecretariatActivitiesTable()" class="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
                   <option value="ALL">Todas las Áreas (Clínica + Académica)</option>
-                  <option value="ACADEMICA">Solo Actividades Académicas (Escuela SpA)</option>
-                  <option value="CLINICA">Solo Actividades Clínicas (Clínica SpA)</option>
+                  <option value="ACADEMICA">Solo Actividades Académicas</option>
+                  <option value="CLINICA">Solo Actividades Clínicas</option>
                 </select>
                 <button onclick="loadSecretariatPortalOverview()" class="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer">
                   <span>🔄 Actualizar</span>
@@ -1061,7 +999,7 @@
                     <th class="py-2.5 px-3">Horas Práctica Clínica</th>
                     <th class="py-2.5 px-3">Nota Práctica / Promedio</th>
                     <th class="py-2.5 px-3">Asistencia Mentoría</th>
-                    <th class="py-2.5 px-3">Tutor Clínico (Clínica SpA)</th>
+                    <th class="py-2.5 px-3">Tutor Clínico</th>
                     <th class="py-2.5 px-3">Estado</th>
                   </tr>
                 </thead>
@@ -1277,7 +1215,7 @@
             <div>
               <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-[#1A56B2] text-xs font-bold border border-blue-200 mb-1">
                 <i data-lucide="award" class="w-3.5 h-3.5"></i>
-                <span>Instituto de Medicina China Clásica SpA • Escuela San Bao</span>
+                <span>Dirección Académica • Medicina China Clásica</span>
               </div>
               <h2 class="brand-serif text-2xl font-bold text-slate-900">Dirección Académica &amp; Gestión Curricular</h2>
               <p class="text-xs text-slate-500">Diseño y visualización de Malla Curricular, suma de asignaturas y asignación de 1 o 2 profesores activos en el registro de RRHH.</p>
@@ -1525,7 +1463,7 @@
             <div>
               <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-[#1A56B2] text-xs font-bold border border-blue-200 mb-1">
                 <i data-lucide="clipboard-check" class="w-3.5 h-3.5"></i>
-                <span>Escuela San Bao SpA (Instituto de Medicina China Clásica SpA) • Gestión Académica</span>
+                <span>Gestión Académica</span>
               </div>
               <h2 class="brand-serif text-2xl font-bold text-slate-900">Gestión Académica &amp; Control Curricular</h2>
               <p class="text-xs text-slate-500">
@@ -2020,7 +1958,7 @@
                 <div>
                   <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 text-[10px] font-extrabold uppercase border border-indigo-200 mb-1">
                     <i data-lucide="user-plus" class="w-3.5 h-3.5 text-indigo-700"></i>
-                    <span>Admisión &amp; Control Arancelario • Escuela San Bao SpA</span>
+                    <span>Admisión &amp; Control Arancelario</span>
                   </div>
                   <h3 class="font-bold text-base sm:text-lg text-slate-900 flex items-center gap-2">
                     <span>7. Gestión de Matrículas &amp; Listado Consolidado de Matriculados</span>
@@ -2551,7 +2489,7 @@
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div class="space-y-1">
                 <div class="inline-flex flex-wrap items-center gap-2 px-3 py-0.5 rounded-full bg-teal-400/20 border border-teal-300/40 text-teal-100 text-[11px] font-extrabold uppercase">
-                  <span>🩺 Portal Exclusivo de Tutores Clínicos • Servicios Clínicos San Bao SpA (RUT 76.987.654-5)</span>
+                  <span>🩺 Portal Exclusivo de Tutores Clínicos</span>
                   <span class="px-2 py-0.5 rounded-full bg-emerald-400/25 border border-emerald-300/40 text-emerald-200 text-[10px]">🔒 SOLO TURNOS ASIGNADOS AL TUTOR</span>
                 </div>
                 <h2 class="brand-serif text-2xl font-bold">Portal de Tutores — Mis Turnos Clínicos Asignados, Notas y Aprobación QR MINSAL</h2>
@@ -2580,18 +2518,18 @@
               <div class="p-3 rounded-xl bg-white/10 border border-white/15 flex items-center justify-between">
                 <div>
                   <span class="text-[10px] font-extrabold uppercase text-amber-300 block">Separación Financiera &amp; RRHH — Docentes de Aula</span>
-                  <span class="font-bold text-white">👨‍🏫 Docentes (`TEACHER`) → Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)</span>
+                  <span class="font-bold text-white">👨‍🏫 Docentes (`TEACHER`)</span>
                   <span class="block text-[11px] text-teal-100/80">Centro de Costo: CC-DOCENCIA-ESCUELA • Cátedra teórica y ramos lectivos</span>
                 </div>
-                <span class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/40 text-amber-200 font-mono font-bold text-[11px]">ESCUELA SpA</span>
+                <span class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/40 text-amber-200 font-mono font-bold text-[11px]">ACADEMIA</span>
               </div>
               <div class="p-3 rounded-xl bg-teal-950/70 border border-teal-300/40 flex items-center justify-between">
                 <div>
                   <span class="text-[10px] font-extrabold uppercase text-emerald-300 block">Separación Financiera &amp; RRHH — Tutores de Práctica</span>
-                  <span class="font-bold text-white">🩺 Tutores Clínicos (`PRACTITIONER`) → Clínica San Bao SpA (Servicios Clínicos San Bao SpA)</span>
+                  <span class="font-bold text-white">🩺 Tutores Clínicos (`PRACTITIONER`)</span>
                   <span class="block text-[11px] text-teal-100/80">Centro de Costo: CC-TUTORIA-CLINICA • Supervisión exclusiva de sus turnos asignados</span>
                 </div>
-                <span class="px-2.5 py-1 rounded-lg bg-emerald-400/20 border border-emerald-300/40 text-emerald-200 font-mono font-bold text-[11px]">CLÍNICA SpA</span>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-400/20 border border-emerald-300/40 text-emerald-200 font-mono font-bold text-[11px]">CLÍNICA</span>
               </div>
             </div>
           </div>
@@ -2691,12 +2629,12 @@
                 <thead>
                   <tr class="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase">
                     <th class="py-2.5 px-3">Código QR</th>
-                    <th class="py-2.5 px-3">Alumno (Escuela SpA)</th>
+                    <th class="py-2.5 px-3">Alumno</th>
                     <th class="py-2.5 px-3">Fecha MINSAL</th>
                     <th class="py-2.5 px-3">Hora Entrada / Salida</th>
                     <th class="py-2.5 px-3">Horas</th>
                     <th class="py-2.5 px-3">Sede / Box</th>
-                    <th class="py-2.5 px-3">Tutor Asignado (Clínica SpA)</th>
+                    <th class="py-2.5 px-3">Tutor Asignado</th>
                     <th class="py-2.5 px-3">Estado</th>
                     <th class="py-2.5 px-3 text-right">Acción Eficiente de Visación</th>
                   </tr>
@@ -3378,7 +3316,7 @@
             <div class="space-y-1">
               <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-blue-200 font-bold">
                 <i data-lucide="shield-plus" class="w-4 h-4 text-blue-300"></i>
-                <span>Servicios Clínicos San Bao SpA • Gestión Asistencial</span>
+                <span>Gestión Clínica & Agenda Asistencial</span>
               </div>
               <h2 class="text-2xl font-bold brand-serif text-white">Dirección Clínica & Acreditación MTC</h2>
               <p class="text-xs text-blue-100 max-w-2xl">
@@ -3819,7 +3757,7 @@
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2 text-xs font-bold text-[#0C1D36]">
                     <i data-lucide="clock" class="w-4 h-4 text-[#1A56B2]"></i>
-                    <span>Estructura Oficial de Turnos y Franjas Horarias (Dirección Clínica San Bao SpA)</span>
+                    <span>Estructura Oficial de Turnos y Franjas Horarias</span>
                   </div>
                   <span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-[#1A56B2] font-mono font-bold text-[10px]">
                     Régimen Vigente 2026
@@ -6045,7 +5983,7 @@
                       <label class="block font-bold text-slate-700 mb-1">Sociedad SpA Receptora</label>
                       <select id="fin-pay-company" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold">
                         <option value="instituto">Instituto SpA (77.123.456-9)</option>
-                        <option value="clinica">Clínica SpA (76.987.654-5)</option>
+                        <option value="clinica">Clínica (76.987.654-5)</option>
                       </select>
                     </div>
                     <div>
@@ -6949,9 +6887,9 @@
                     <label class="block font-bold text-slate-700 mb-1">Cuenta Bancaria / Caja *</label>
                     <select id="fin-tres-bank" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold">
                       <option value="Banco de Chile • Cta. Cte. N° 00-184-99210-08 (Instituto SpA)">Banco de Chile Cta. Cte. (Instituto SpA)</option>
-                      <option value="Banco Santander • Cta. Cte. N° 0-000-7482910-4 (Clínica SpA)">Banco Santander Cta. Cte. (Clínica SpA)</option>
+                      <option value="Banco Santander • Cta. Cte. N° 0-000-7482910-4">Banco Santander Cta. Cte.</option>
                       <option value="Caja Chica & Recaudación Sede Providencia (Instituto SpA)">Caja Sede Providencia (Instituto SpA)</option>
-                      <option value="Caja Recepción Clínica & POS Transbank (Clínica SpA)">Caja Recepción Clínica & POS (Clínica SpA)</option>
+                      <option value="Caja Recepción Clínica & POS Transbank">Caja Recepción Clínica & POS</option>
                     </select>
                   </div>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -7521,28 +7459,28 @@
           <!-- SUBTAB 1: REGISTRO DE TRABAJADORES Y COLABORADORES                -->
           <!-- ================================================================= -->
           <div id="hr-subtab-employees" class="hr-subtab-pane space-y-4">
-            <!-- Banner de Diferenciación Financiera y de RRHH: Docentes (Escuela San Bao SpA) vs Tutores (Clínica San Bao SpA) -->
+            <!-- Banner de Diferenciación Financiera y de RRHH: Docentes vs Tutores -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div class="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 flex items-start justify-between gap-3">
                 <div class="space-y-1">
-                  <span class="px-2.5 py-0.5 rounded-full bg-[#1A56B2] text-white text-[10px] font-extrabold uppercase">Estamento Docente • Escuela San Bao SpA</span>
-                  <h4 class="font-bold text-sm text-slate-900 mt-1">👨‍🏫 Docentes de Cátedra (`TEACHER`) → Escuela San Bao SpA</h4>
+                  <span class="px-2.5 py-0.5 rounded-full bg-[#1A56B2] text-white text-[10px] font-extrabold uppercase">Estamento Docente</span>
+                  <h4 class="font-bold text-sm text-slate-900 mt-1">👨‍🏫 Docentes de Cátedra (`TEACHER`) → Área Académica</h4>
                   <p class="text-xs text-slate-600">
                     Pertenecen financiera y contractualmente a <strong>Instituto de Medicina China Clásica SpA (RUT 77.123.456-9)</strong>. Centro de Costo: <code>CC-DOCENCIA-ESCUELA</code> (Liquidación por horas de docencia teórica y asignaturas de malla).
                   </p>
                 </div>
-                <span class="font-mono text-xs font-extrabold text-[#1A56B2] bg-white px-3 py-1.5 rounded-xl border border-blue-200 shrink-0">ESCUELA SpA</span>
+                <span class="font-mono text-xs font-extrabold text-[#1A56B2] bg-white px-3 py-1.5 rounded-xl border border-blue-200 shrink-0">ACADEMIA</span>
               </div>
 
               <div class="p-4 rounded-2xl bg-teal-50/80 border border-teal-200 flex items-start justify-between gap-3">
                 <div class="space-y-1">
-                  <span class="px-2.5 py-0.5 rounded-full bg-teal-700 text-white text-[10px] font-extrabold uppercase">Estamento Tutor Clínico • Clínica San Bao SpA</span>
-                  <h4 class="font-bold text-sm text-slate-900 mt-1">🩺 Tutores Clínicos (`PRACTITIONER`) → Clínica San Bao SpA</h4>
+                  <span class="px-2.5 py-0.5 rounded-full bg-teal-700 text-white text-[10px] font-extrabold uppercase">Estamento Tutor Clínico</span>
+                  <h4 class="font-bold text-sm text-slate-900 mt-1">🩺 Tutores Clínicos (`PRACTITIONER`) → Área Clínica</h4>
                   <p class="text-xs text-slate-600">
                     Pertenecen financiera y contractualmente a <strong>Servicios Clínicos San Bao SpA (RUT 76.987.654-5)</strong>. Centro de Costo: <code>CC-TUTORIA-CLINICA</code> (Supervisión de práctica clínica, notas prácticas y visación de asistencia QR MINSAL).
                   </p>
                 </div>
-                <span class="font-mono text-xs font-extrabold text-teal-800 bg-white px-3 py-1.5 rounded-xl border border-teal-200 shrink-0">CLÍNICA SpA</span>
+                <span class="font-mono text-xs font-extrabold text-teal-800 bg-white px-3 py-1.5 rounded-xl border border-teal-200 shrink-0">CLÍNICA</span>
               </div>
             </div>
 
@@ -7550,19 +7488,19 @@
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 class="font-bold text-base text-slate-900">1. Registro Oficial de Trabajadores y Colaboradores</h3>
-                  <p class="text-xs text-slate-500">Nómina con diferenciación financiera y de RRHH entre Docentes (Escuela San Bao SpA) y Tutores Clínicos (Clínica San Bao SpA).</p>
+                  <p class="text-xs text-slate-500">Nómina con diferenciación financiera y de RRHH entre Docentes y Tutores Clínicos.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs">
                   <select id="hr-company-filter" onchange="onHRCompanyFilterChange()" class="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-semibold cursor-pointer">
                     <option value="consolidated">🏛️ Consolidado Holding (Ambas SpA)</option>
-                    <option value="instituto">🎓 Escuela San Bao SpA</option>
-                    <option value="clinica">🏥 Clínica San Bao SpA</option>
+                    <option value="instituto">🎓 Área Académica</option>
+                    <option value="clinica">🏥 Área Clínica</option>
                   </select>
                   <input id="hr-emp-search" type="text" oninput="loadHRHubOverview()" placeholder="Buscar por nombre, RUT, cargo o N° ficha..." class="px-3 py-2 rounded-xl border border-slate-200 w-56 focus:outline-none focus:border-[#1A56B2]" />
                   <select id="hr-emp-type-filter" onchange="loadHRHubOverview()" class="px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold cursor-pointer">
                     <option value="ALL">Todos los Estamentos</option>
-                    <option value="TEACHER">Docentes (Escuela San Bao SpA)</option>
-                    <option value="PRACTITIONER">Tutores Clínicos &amp; Terapeutas (Clínica San Bao SpA)</option>
+                    <option value="TEACHER">Docentes</option>
+                    <option value="PRACTITIONER">Tutores Clínicos &amp; Terapeutas</option>
                     <option value="ADMINISTRATIVE">Administrativos &amp; Gestión</option>
                   </select>
                   <button onclick="openHRNewEmployeeModal()" class="px-3.5 py-2 rounded-xl bg-[#1A56B2] hover:bg-[#14438C] text-white font-bold cursor-pointer">
@@ -8709,7 +8647,7 @@
             <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4">
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 font-extrabold text-[11px]">PORTAL 02 • INSTITUTO MTC SpA</span>
+                  <span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 font-extrabold text-[11px]">PORTAL 02 • ÁREA ACADÉMICA</span>
                   <span class="w-10 h-10 rounded-2xl bg-indigo-700 text-white flex items-center justify-center font-bold text-base">🎓</span>
                 </div>
                 <div>
@@ -8733,7 +8671,7 @@
             <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4">
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <span class="px-3 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 font-extrabold text-[11px]">PORTAL 03 • CLÍNICA SAN BAO SpA</span>
+                  <span class="px-3 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 font-extrabold text-[11px]">PORTAL 03 • ÁREA CLÍNICA MTC</span>
                   <span class="w-10 h-10 rounded-2xl bg-rose-700 text-white flex items-center justify-center font-bold text-base">🩺</span>
                 </div>
                 <div>
@@ -8903,7 +8841,7 @@
           <!-- Banner de Bienvenida del Paciente -->
           <div class="bg-gradient-to-r from-[#0C1D36] via-emerald-950 to-emerald-800 rounded-3xl p-6 text-white shadow-xl border border-emerald-700/40">
             <div class="space-y-1">
-              <span class="px-2.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-300/30 font-bold text-[10px] uppercase tracking-wider">Servicios Clínicos San Bao SpA • Medicina Tradicional China</span>
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-300/30 font-bold text-[10px] uppercase tracking-wider">Portal de Pacientes • Medicina Tradicional China</span>
               <h2 id="pt-portal-banner-name" class="text-xl sm:text-2xl font-extrabold">Rodrigo Silva</h2>
               <p id="pt-portal-banner-meta" class="text-xs sm:text-sm text-emerald-100">
                 RUT: <span class="font-mono font-bold text-white">17.123.456-5</span> • Ficha Clínica: <span class="font-mono font-bold text-amber-300">FICHA-MTC-001</span> • Sede Preferente: <strong>Providencia, Santiago</strong>
@@ -10807,7 +10745,7 @@
           </div>
           <div>
             <h3 class="font-bold text-base text-slate-900">Acreditación de Nuevo Tutor Clínico</h3>
-            <p class="text-xs text-[#1A56B2] font-semibold">Dirección Clínica • Servicios Clínicos San Bao SpA</p>
+            <p class="text-xs text-[#1A56B2] font-semibold">Dirección Clínica • Medicina Tradicional China</p>
           </div>
         </div>
         <button onclick="closeCreateTutorModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors">
@@ -12584,7 +12522,7 @@
             </div>
             <div class="text-xs font-bold text-slate-900">Lic. Camilo San Martín B.</div>
             <div class="text-[11px] text-slate-500">Coordinador Académico</div>
-            <div class="text-[10px] text-slate-400">Escuela San Bao SpA</div>
+            <div class="text-[10px] text-slate-400">Área Académica</div>
           </div>
 
           <div class="space-y-2">
@@ -13843,7 +13781,7 @@
         `).join('');
       }
 
-      // Lista de compromisos financieros y cuotas (Escuela San Bao SpA) con opción Pagar Cuota
+      // Lista de compromisos financieros y cuotas con opción Pagar Cuota
       const financeContainer = document.getElementById('st-portal-finance-list');
       if (financeContainer && Array.isArray(fin.items) && fin.items.length > 0) {
         financeContainer.innerHTML = fin.items.slice(0, 8).map(item => {
@@ -13854,7 +13792,7 @@
               <div>
                 <div class="flex items-center gap-1.5">
                   <span class="text-[11px] font-bold ${isPaid ? 'text-emerald-800' : 'text-slate-800'}">${escapeHtml(item.concept)}</span>
-                  <span class="px-1.5 py-0.5 rounded bg-blue-50 text-[#1A56B2] font-mono text-[9px] font-bold">Escuela San Bao SpA</span>
+                  <span class="px-1.5 py-0.5 rounded bg-blue-50 text-[#1A56B2] font-mono text-[9px] font-bold">Área Académica</span>
                 </div>
                 <p class="text-[10px] text-slate-500">Vencimiento: ${escapeHtml(item.due_date || '--')} ${item.payment_method ? `• ${escapeHtml(item.payment_method)}` : ''}</p>
               </div>
@@ -13884,7 +13822,7 @@
         const compH = st.clinical_hours_completed ?? 120;
         const reqH = st.clinical_hours_required ?? 400;
         const pctH = st.clinical_progress_pct ?? Math.round((compH / Math.max(1, reqH)) * 100);
-        qrSummaryBadge.textContent = `${compH} / ${reqH} hrs acreditadas (${pctH}%) • Escuela San Bao SpA`;
+        qrSummaryBadge.textContent = `${compH} / ${reqH} hrs acreditadas (${pctH}%)`;
       }
       const qrTbody = document.getElementById('st-portal-qr-logs-tbody');
       const qrLogs = Array.isArray(st.clinical_practice_logs) ? st.clinical_practice_logs : [];
@@ -13902,7 +13840,7 @@
                 <td class="py-2.5 px-3 font-mono font-bold text-amber-700">${escapeHtml(log.check_out_time || 'En turno')}</td>
                 <td class="py-2.5 px-3 font-extrabold text-slate-900">${Number(log.hours_logged || 0)} hrs</td>
                 <td class="py-2.5 px-3 text-slate-600">${escapeHtml(log.campus || '')} • <strong>${escapeHtml(log.box_name || '')}</strong></td>
-                <td class="py-2.5 px-3 text-teal-800 font-semibold">${escapeHtml(log.tutor_name || '')} <span class="text-[10px] text-slate-400">(Clínica SpA)</span></td>
+                <td class="py-2.5 px-3 text-teal-800 font-semibold">${escapeHtml(log.tutor_name || '')} <span class="text-[10px] text-slate-400">(Clínica)</span></td>
                 <td class="py-2.5 px-3">
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isApproved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
                     ${isApproved ? '✓ VISADO POR TUTOR' : '⏳ EN REVISIÓN TUTOR'}
@@ -14056,7 +13994,7 @@
         avatar.classList.remove('bg-[#1A56B2]', 'bg-rose-700', 'bg-emerald-700');
         avatar.classList.add('bg-[#0C1D36]', 'border', 'border-blue-400');
         name.textContent = 'Diego Valenzuela';
-        userRole.textContent = 'Alumno Regular • Escuela San Bao SpA';
+        userRole.textContent = 'Alumno Regular';
         const companySelect = document.getElementById('company-select');
         if (companySelect) companySelect.value = 'instituto';
         onCompanyChange();
@@ -14067,7 +14005,7 @@
         avatar.classList.remove('bg-[#0C1D36]', 'bg-rose-700', 'bg-pink-700', 'border', 'border-blue-400');
         avatar.classList.add('bg-[#1A56B2]');
         name.textContent = 'Dra. Marcela Pérez M.';
-        userRole.textContent = 'Dirección Académica (Escuela San Bao SpA)';
+        userRole.textContent = 'Dirección Académica';
         const companySelect = document.getElementById('company-select');
         if (companySelect) companySelect.value = 'instituto';
         onCompanyChange();
@@ -14079,7 +14017,7 @@
         avatar.classList.remove('bg-[#0C1D36]', 'bg-rose-700', 'bg-pink-700', 'border', 'border-blue-400');
         avatar.classList.add('bg-[#1A56B2]');
         name.textContent = 'Lic. Camilo San Martín B.';
-        userRole.textContent = 'Gestión Académica (Escuela San Bao SpA)';
+        userRole.textContent = 'Gestión Académica';
         const companySelect = document.getElementById('company-select');
         if (companySelect) companySelect.value = 'instituto';
         onCompanyChange();
@@ -14102,7 +14040,7 @@
         avatar.classList.remove('bg-[#1A56B2]', 'bg-[#0C1D36]', 'bg-rose-700', 'bg-pink-700', 'border', 'border-blue-400');
         avatar.classList.add('bg-[#0C1D36]', 'border-2', 'border-amber-400');
         name.textContent = 'Prof. Zhiwei Chen';
-        userRole.textContent = 'Docente Titular • Escuela San Bao SpA';
+        userRole.textContent = 'Docente Titular';
         const companySelect = document.getElementById('company-select');
         if (companySelect) companySelect.value = 'instituto';
         onCompanyChange();
@@ -14114,7 +14052,7 @@
         avatar.classList.remove('bg-[#1A56B2]', 'bg-[#0C1D36]', 'bg-rose-700', 'bg-pink-700', 'border', 'border-blue-400');
         avatar.classList.add('bg-[#0C1D36]', 'border-2', 'border-teal-400');
         name.textContent = 'Dr. Roberto Gómez Valdés';
-        userRole.textContent = 'Tutor Clínico • Clínica San Bao SpA';
+        userRole.textContent = 'Tutor Clínico';
         const companySelect = document.getElementById('company-select');
         if (companySelect) companySelect.value = 'clinica';
         onCompanyChange();
@@ -26524,7 +26462,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <div class="text-[10px] font-mono text-slate-500"><a href="mailto:${e.email}" class="hover:underline">${e.email}</a></div>
           </td>
           <td class="py-3 px-3">
-            <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px]">${e.company_name.includes('Instituto') ? 'Instituto SpA' : 'Clínica SpA'}</span>
+            <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px]">${e.company_name.includes('Instituto') ? 'Instituto SpA' : 'Clínica'}</span>
             <div class="text-[10px] font-mono text-slate-400 mt-0.5">${e.company_rut}</div>
           </td>
           <td class="py-3 px-3">
@@ -26688,7 +26626,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
                 <div class="font-bold text-slate-900">${lv.employee_name}</div>
                 <div class="text-[10px] font-mono text-slate-500">${lv.employee_rut} • ${lv.employee_number}</div>
               </td>
-              <td class="py-2.5 px-3 text-slate-700 font-semibold">${lv.company_name.includes('Instituto') ? 'Instituto SpA' : 'Clínica SpA'}</td>
+              <td class="py-2.5 px-3 text-slate-700 font-semibold">${lv.company_name.includes('Instituto') ? 'Instituto SpA' : 'Clínica'}</td>
               <td class="py-2.5 px-3 font-bold text-[#1A56B2]">${ltypeLabels[lv.leave_type] || lv.leave_type}</td>
               <td class="py-2.5 px-3 font-mono text-[11px]">${lv.start_date} → ${lv.end_date}</td>
               <td class="py-2.5 px-3 text-center font-mono font-extrabold text-slate-900">${lv.days_count} día(s)</td>
@@ -26771,7 +26709,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <div class="font-bold text-slate-900">${b.employee_name}</div>
             <div class="text-[10px] font-mono text-slate-500">RUT: ${b.employee_rut}</div>
           </td>
-          <td class="py-2.5 px-3 font-semibold text-slate-700">${b.company_name.includes('Instituto') ? 'Instituto SpA' : 'Clínica SpA'}</td>
+          <td class="py-2.5 px-3 font-semibold text-slate-700">${b.company_name.includes('Instituto') ? 'Instituto SpA' : 'Clínica'}</td>
           <td class="py-2.5 px-3 text-slate-700 max-w-xs">${b.description}</td>
           <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${fmtCLP(b.gross_amount)}</td>
           <td class="py-2.5 px-3 text-right font-mono font-bold text-rose-600">-${fmtCLP(b.retention_amount)}</td>
@@ -27550,7 +27488,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <label class="block font-bold text-slate-700 mb-1">Sociedad SpA Acreedora</label>
             <select id="fin-new-comm-company" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold">
               <option value="instituto">Instituto SpA (77.123.456-9)</option>
-              <option value="clinica">Clínica SpA (76.987.654-5)</option>
+              <option value="clinica">Clínica (76.987.654-5)</option>
             </select>
           </div>
           <div>
@@ -27881,7 +27819,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <label class="block font-bold text-slate-700 mb-1">Sociedad Empleadora SpA *</label>
             <select id="hr-new-emp-company" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold">
               <option value="instituto">Instituto SpA (Escuela MTC)</option>
-              <option value="clinica">Clínica SpA (Servicios Clínicos)</option>
+              <option value="clinica">Clínica (Servicios Clínicos)</option>
             </select>
           </div>
           <div>
@@ -30050,55 +29988,55 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
       },
       'direccion.academica@sanbao.cl': {
         username: 'direccion.academica@sanbao.cl', rut: '11.345.678-9', full_name: 'Dra. Marcela Pérez Morales', avatar: 'MP',
-        portal_role: 'director_academico', role_label: 'Directora Académica • Escuela San Bao SpA', entity: 'Escuela San Bao SpA',
+        portal_role: 'director_academico', role_label: 'Directora Académica', entity: 'Área Académica',
         default_tab: 'academic-direction',
         allowed_tabs: ['academic-direction', 'academic-coordinator']
       },
       'coordinacion@sanbao.cl': {
         username: 'coordinacion@sanbao.cl', rut: '14.567.890-1', full_name: 'Lic. Camilo San Martín B.', avatar: 'CS',
-        portal_role: 'coordinador', role_label: 'Gestión Académica • Escuela San Bao SpA', entity: 'Escuela San Bao SpA',
+        portal_role: 'coordinador', role_label: 'Gestión Académica', entity: 'Área Académica',
         default_tab: 'academic-coordinator',
         allowed_tabs: ['academic-coordinator']
       },
       'secretaria.sede@sanbao.cl': {
         username: 'secretaria.sede@sanbao.cl', rut: '16.543.210-9', full_name: 'Claudia Fuentes R.', avatar: 'CF',
-        portal_role: 'secretaria_academica', role_label: 'Gestión Secretaría • Portal de Secretaría', entity: 'Escuela San Bao SpA',
+        portal_role: 'secretaria_academica', role_label: 'Gestión Secretaría • Portal de Secretaría', entity: 'Área Académica',
         default_tab: 'academic',
         allowed_tabs: ['academic']
       },
       'direccion.clinica@sanbao.cl': {
         username: 'direccion.clinica@sanbao.cl', rut: '10.987.654-2', full_name: 'Dr. Roberto Valenzuela', avatar: 'RV',
-        portal_role: 'director', role_label: 'Director Clínico • Clínica San Bao SpA', entity: 'Clínica San Bao SpA',
+        portal_role: 'director', role_label: 'Director Clínico', entity: 'Área Clínica',
         default_tab: 'clinical-management',
         allowed_tabs: ['clinical-management', 'clinical', 'tutor-portal']
       },
       'recepcion@sanbao.cl': {
         username: 'recepcion@sanbao.cl', rut: '18.234.567-8', full_name: 'Valentina Morales', avatar: 'VM',
-        portal_role: 'secretaria', role_label: 'Secretaria Clínica • Sede Providencia', entity: 'Clínica San Bao SpA',
+        portal_role: 'secretaria', role_label: 'Secretaria Clínica • Sede Providencia', entity: 'Área Clínica',
         default_tab: 'clinical',
         allowed_tabs: ['clinical']
       },
       '19.876.543-0': {
         username: 'diego.valenzuela@alumno.sanbao.cl', rut: '19.876.543-0', full_name: 'Diego Valenzuela Rojas', avatar: 'DV',
-        portal_role: 'alumno', role_label: 'Alumno Regular (MAT-2026-0001) • Escuela San Bao SpA', entity: 'Escuela San Bao SpA',
+        portal_role: 'alumno', role_label: 'Alumno Regular (MAT-2026-0001)', entity: 'Área Académica',
         default_tab: 'student',
         allowed_tabs: ['student']
       },
       '14.112.233-K': {
         username: 'zhiwei.chen@docente.sanbao.cl', rut: '14.112.233-K', full_name: 'Prof. Zhiwei Chen', avatar: 'ZC',
-        portal_role: 'docente', role_label: 'Docente Titular • Escuela San Bao SpA', entity: 'Escuela San Bao SpA',
+        portal_role: 'docente', role_label: 'Docente Titular', entity: 'Área Académica',
         default_tab: 'teacher-portal',
         allowed_tabs: ['teacher-portal']
       },
       'tutor.clinico@sanbao.cl': {
         username: 'tutor.clinico@sanbao.cl', rut: '12.876.543-1', full_name: 'Dr. Roberto Gómez Valdés', avatar: 'RG',
-        portal_role: 'tutor_clinico', role_label: 'Tutor Clínico Supervisor • Clínica San Bao SpA', entity: 'Clínica San Bao SpA',
+        portal_role: 'tutor_clinico', role_label: 'Tutor Clínico Supervisor', entity: 'Área Clínica',
         default_tab: 'tutor-portal',
         allowed_tabs: ['tutor-portal']
       },
       '17.123.456-5': {
         username: 'rodrigo.silva@paciente.cl', rut: '17.123.456-5', full_name: 'Rodrigo Silva', avatar: 'RS',
-        portal_role: 'paciente', role_label: 'Paciente Clínico • Sede Providencia', entity: 'Clínica San Bao SpA',
+        portal_role: 'paciente', role_label: 'Paciente Clínico • Sede Providencia', entity: 'Área Clínica',
         default_tab: 'patient-portal',
         allowed_tabs: ['patient-portal']
       }
@@ -30158,14 +30096,6 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
       if (selectedValue === '__HUB_PORTALS__') {
         unlockAllPortalsForDev();
         switchTab('portals');
-        return;
-      }
-      if (selectedValue === '__DEMO_ACADEMIA__') {
-        if (typeof activateClientDemoMode === 'function') activateClientDemoMode('academia');
-        return;
-      }
-      if (selectedValue === '__DEMO_CLINICA__') {
-        if (typeof activateClientDemoMode === 'function') activateClientDemoMode('clinica');
         return;
       }
       const meta = SSO_DEV_COMBO_PROFILES[selectedValue];
@@ -30602,7 +30532,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
           <tr class="hover:bg-slate-50">
             <td class="py-2.5 px-3">
               <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isClin ? 'bg-teal-100 text-teal-800 border border-teal-200' : 'bg-blue-100 text-[#1A56B2] border border-blue-200'}">
-                ${isClin ? '🩺 CLÍNICA (Clínica SpA)' : '🎓 ACADÉMICA (Escuela SpA)'}
+                ${isClin ? '🩺 CLÍNICA' : '🎓 ACADÉMICA'}
               </span>
             </td>
             <td class="py-2.5 px-3 font-semibold text-slate-800">${escapeHtml(a.campus)}</td>
@@ -30731,7 +30661,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
           <td class="py-2.5 px-3">
             <div class="font-bold text-slate-900">${escapeHtml(s.student_name)}</div>
             <div class="text-[10px] font-mono text-slate-500">${escapeHtml(s.rut)} • ${escapeHtml(s.student_number)}</div>
-            <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-blue-50 text-[#1A56B2] font-bold text-[9px]">${escapeHtml(s.company_entity || 'Escuela San Bao SpA')}</span>
+            <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-blue-50 text-[#1A56B2] font-bold text-[9px]">${escapeHtml(s.company_entity || 'Área Académica')}</span>
           </td>
           <td class="py-2.5 px-3">
             <div class="font-semibold text-slate-800">${escapeHtml(s.program_name)}</div>
@@ -30758,7 +30688,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
           </td>
           <td class="py-2.5 px-3">
             <div class="font-semibold text-teal-800">${escapeHtml(s.assigned_tutor_name || 'Dr. Roberto Gómez Valdés')}</div>
-            <span class="text-[10px] text-slate-400">${escapeHtml(s.tutor_company_entity || 'Clínica San Bao SpA')}</span>
+            <span class="text-[10px] text-slate-400">${escapeHtml(s.tutor_company_entity || 'Área Clínica')}</span>
           </td>
           <td class="py-2.5 px-3">
             <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">${escapeHtml(s.practice_status || 'EN PRÁCTICA SUPERVISADA')}</span>
@@ -30839,7 +30769,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
         const json = await res.json();
         if (res.ok && json.success) {
           await loadStudentPortalProfile(rut);
-          showSanBaoAlert(json.message || 'Cuota pagada exitosamente en Escuela San Bao SpA.', 'Pago de Cuota Confirmado (Escuela San Bao SpA)', 'success');
+          showSanBaoAlert(json.message || 'Cuota pagada exitosamente.', 'Pago de Cuota Confirmado', 'success');
         } else {
           showSanBaoAlert(json.detail || 'No fue posible procesar el pago de la cuota.');
         }
@@ -30950,7 +30880,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             </td>
             <td class="py-2.5 px-3">
               <div class="font-bold text-slate-800">🎒 ${escapeHtml(sh.intern_student_name || 'Alumno en Práctica')}</div>
-              <span class="text-[10px] text-slate-500">Escuela San Bao SpA</span>
+              <span class="text-[10px] text-slate-500">Área Académica</span>
             </td>
             <td class="py-2.5 px-3">
               <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">${escapeHtml(sh.status || 'ACTIVO')}</span>
@@ -30975,7 +30905,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <td class="py-2.5 px-3 font-mono font-bold text-teal-800">${escapeHtml(l.id)}</td>
             <td class="py-2.5 px-3">
               <div class="font-bold text-slate-900">${escapeHtml(l.student_name)}</div>
-              <div class="text-[10px] font-mono text-slate-500">${escapeHtml(l.student_rut)} • Escuela SpA</div>
+              <div class="text-[10px] font-mono text-slate-500">${escapeHtml(l.student_rut)}</div>
             </td>
             <td class="py-2.5 px-3 font-mono font-semibold text-slate-800">${escapeHtml(l.date)}</td>
             <td class="py-2.5 px-3 font-mono">
@@ -31017,7 +30947,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
           <td class="py-2.5 px-3">
             <div class="font-bold text-slate-900">${escapeHtml(s.student_name)}</div>
             <div class="text-[10px] font-mono text-slate-500">${escapeHtml(s.rut)} • ${escapeHtml(s.student_number)}</div>
-            <span class="px-1.5 py-0.2 rounded bg-blue-50 text-[#1A56B2] font-bold text-[9px]">Escuela San Bao SpA</span>
+            <span class="px-1.5 py-0.2 rounded bg-blue-50 text-[#1A56B2] font-bold text-[9px]">Área Académica</span>
           </td>
           <td class="py-2.5 px-3">
             <div class="font-semibold text-slate-800">${escapeHtml(s.program_name)}</div>
@@ -31183,222 +31113,167 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
   </nav>
 
   <!-- ======================================================================= -->
-  <!-- PANTALLA / PORTAL DE INGRESO ÚNICO INTEGRAL & AMABLE (SSO SAN BAO)      -->
+  <!-- PANTALLA / PORTAL DE INGRESO ÚNICO INTEGRAL & COMPACTO (SSO SAN BAO)    -->
   <!-- ======================================================================= -->
   <div id="sso-login-overlay" class="fixed inset-0 bg-gradient-to-br from-[#071326]/95 via-[#0C1D36]/92 to-[#142F5A]/95 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-    <div class="bg-white rounded-[2rem] max-w-4xl w-full shadow-2xl border border-white/20 overflow-hidden grid grid-cols-1 md:grid-cols-12 my-auto relative">
+    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-white/20 overflow-hidden flex flex-col my-auto relative">
 
-      <!-- Panel Izquierdo (5 cols): Bienvenida Integral, Calidez & Identidad San Bao -->
-      <div class="md:col-span-5 bg-gradient-to-br from-[#0A182E] via-[#0F2447] to-[#1A56B2] text-white p-7 sm:p-9 flex flex-col justify-between relative overflow-hidden">
-        <!-- Acentos decorativos suaves (armonía y calidez) -->
+      <!-- 1. ARRIBA: LOGO Y DESCRIPCIÓN (Fraseo Oficial: Jing • Qi • Shen) -->
+      <div class="bg-gradient-to-br from-[#0A182E] via-[#0F2447] to-[#1A56B2] text-white px-6 py-6 relative overflow-hidden text-center">
         <div class="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-[#D4AF37] via-amber-200 to-[#D4AF37]"></div>
-        <div class="absolute -top-20 -left-20 w-56 h-56 rounded-full bg-blue-400/15 blur-2xl pointer-events-none"></div>
-        <div class="absolute -bottom-24 -right-16 w-64 h-64 rounded-full bg-[#D4AF37]/15 blur-2xl pointer-events-none"></div>
 
-        <div class="space-y-6 relative z-10">
-          <!-- Logotipo e Identidad Institucional -->
-          <div class="flex items-center gap-4">
-            <div class="w-16 h-16 bg-white rounded-2xl p-2 flex items-center justify-center shadow-xl border-2 border-[#D4AF37]/80 flex-shrink-0">
-              <img src="/static/img/logo_sanbao.png" alt="San Bao - Escuela y Clínica de Medicina China Clásica" class="h-full w-full object-contain" />
-            </div>
-            <div>
-              <span class="inline-block px-2.5 py-0.5 rounded-full bg-white/10 border border-[#D4AF37]/40 text-[10px] text-amber-200 font-mono tracking-widest mb-1">
-                三寶 • 神 Shén • 精 Jīng • 氣 Qì
-              </span>
-              <h1 class="brand-serif font-extrabold text-xl tracking-wider text-white leading-tight">SAN BAO</h1>
-              <p class="text-[11px] text-blue-200 font-medium">Escuela &amp; Clínica de Medicina China Clásica</p>
-            </div>
+        <div class="flex flex-col items-center space-y-2.5 relative z-10">
+          <div class="w-16 h-16 bg-white rounded-2xl p-2 flex items-center justify-center shadow-xl border-2 border-[#D4AF37]/80">
+            <img src="/static/img/logo_sanbao.png" alt="San Bao - Medicina China Clásica" class="h-full w-full object-contain" />
           </div>
-
-          <!-- Mensaje de Bienvenida Amable e Integral -->
-          <div class="space-y-2 pt-1">
-            <h2 class="text-lg sm:text-xl font-bold text-white leading-snug">
-              Te damos la bienvenida a tu espacio integral
-            </h2>
-            <p class="text-xs text-blue-100/90 leading-relaxed">
-              Un punto de encuentro único, cercano y seguro que conecta nuestra comunidad académica y clínica. Ingresa con tus credenciales y te llevaremos directamente a tu portal.
-            </p>
-          </div>
-
-          <!-- Pilares de la Comunidad San Bao -->
-          <div class="space-y-2.5 pt-1">
-            <div class="flex items-start gap-3 p-3 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/15">
-              <span class="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-300/40 flex items-center justify-center text-sm shrink-0">🎓</span>
-              <div>
-                <div class="text-xs font-bold text-white">Escuela San Bao SpA</div>
-                <p class="text-[11px] text-blue-100/85 leading-snug">Portal de Alumnos (QR MINSAL, notas y aranceles), Docentes, Dirección Académica y Secretaría.</p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3 p-3 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/15">
-              <span class="w-8 h-8 rounded-xl bg-teal-400/20 border border-teal-300/40 flex items-center justify-center text-sm shrink-0">🩺</span>
-              <div>
-                <div class="text-xs font-bold text-white">Clínica San Bao SpA</div>
-                <p class="text-[11px] text-blue-100/85 leading-snug">Portal de Pacientes, Tutores Clínicos (turnos y visación de prácticas) y Gestión Clínica MTC.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pie de Confianza y Normativa -->
-        <div class="pt-6 border-t border-white/15 flex items-center justify-between text-[11px] text-blue-200/90 relative z-10">
-          <span class="flex items-center gap-1.5 font-medium">
-            <span>🛡️</span> Ley N° 20.584 &bull; MINSAL &bull; SII
+          <span class="inline-block px-3 py-0.5 rounded-full bg-white/10 border border-[#D4AF37]/40 text-[11px] text-amber-200 font-mono tracking-widest">
+            三寶 • 精 Jing • 氣 Qi • 神 Shen
           </span>
-          <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 font-semibold text-[10px]">
-            Acceso Seguro SSO
-          </span>
+          <div>
+            <h1 class="brand-serif font-extrabold text-xl tracking-wider text-white leading-tight">SAN BAO</h1>
+            <p class="text-xs text-blue-100 font-medium mt-0.5">Medicina China Clásica</p>
+          </div>
+          <p class="text-[11px] text-blue-100/90 leading-relaxed max-w-xs">
+            Te damos la bienvenida a tu espacio integral. Ingresa tus credenciales para acceder directamente a tu portal.
+          </p>
         </div>
       </div>
 
-      <!-- Panel Derecho (7 cols): Formulario Amable + Único Combobox de Desarrollo -->
-      <div class="md:col-span-7 p-7 sm:p-10 bg-white flex flex-col justify-between space-y-6">
-        <!-- Encabezado del Formulario -->
-        <div class="space-y-5">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EBF2FC] text-[#1A56B2] text-[11px] font-bold">
-                <span>✨</span> Ingreso Único Inteligente
-              </span>
-              <h2 class="text-xl sm:text-2xl font-extrabold text-[#0C1D36] mt-2">Iniciar Sesión</h2>
-              <p class="text-xs text-slate-500 mt-0.5">
-                Ingresa tu RUT o correo electrónico para acceder a tu portal personalizado.
-              </p>
-            </div>
-            <button type="button" onclick="closeSsoLoginModal()" class="text-slate-400 hover:text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 transition cursor-pointer" title="Continuar en la vista actual">
-              ✕ Cerrar
-            </button>
+      <!-- 2. CENTRO: INICIO DE SESIÓN -->
+      <div class="p-6 bg-white space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-extrabold text-[#0C1D36]">Iniciar Sesión</h2>
+            <p class="text-[11px] text-slate-500">Ingresa tu RUT o correo electrónico registrado.</p>
           </div>
-
-          <div id="sso-logout-banner" class="hidden p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
-            <span>✅</span>
-            <span>Has cerrado tu sesión de forma segura. Selecciona un perfil o ingresa tus credenciales para continuar.</span>
-          </div>
-
-          <!-- Formulario Principal de Login -->
-          <form onsubmit="submitUnifiedSsoLogin(event)" class="space-y-4 text-xs">
-            <div class="space-y-1.5">
-              <label for="sso-login-identifier" class="block font-bold text-slate-700">
-                RUT o Correo Electrónico
-              </label>
-              <div class="relative flex items-center">
-                <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">👤</span>
-                <input
-                  id="sso-login-identifier"
-                  type="text"
-                  required
-                  value="admin@sanbao.cl"
-                  placeholder="Ej: 19.876.543-0 o nombre@sanbao.cl"
-                  class="w-full pl-10 pr-4 py-3 rounded-2xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-[#0C1D36] font-semibold border border-slate-200 focus:border-[#1A56B2] focus:ring-4 focus:ring-blue-500/10 focus:outline-none transition-all"
-                />
-              </div>
-            </div>
-
-            <div class="space-y-1.5">
-              <div class="flex items-center justify-between">
-                <label for="sso-login-password" class="block font-bold text-slate-700">
-                  Contraseña
-                </label>
-                <span class="text-[11px] text-slate-400">
-                  Clave de prueba: <code class="font-mono font-bold text-[#1A56B2] bg-blue-50 px-1.5 py-0.5 rounded">SanBao#2026</code>
-                </span>
-              </div>
-              <div class="relative flex items-center">
-                <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">🔑</span>
-                <input
-                  id="sso-login-password"
-                  type="password"
-                  required
-                  value="SanBao#2026"
-                  placeholder="Ingresa tu contraseña"
-                  class="w-full pl-10 pr-24 py-3 rounded-2xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-[#0C1D36] font-mono font-bold border border-slate-200 focus:border-[#1A56B2] focus:ring-4 focus:ring-blue-500/10 focus:outline-none transition-all"
-                />
-                <button
-                  type="button"
-                  id="sso-toggle-pass-btn"
-                  onclick="toggleSsoPasswordVisibility()"
-                  class="absolute right-2.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold text-slate-500 hover:text-[#1A56B2] hover:bg-slate-100 transition cursor-pointer"
-                >
-                  👁️ Mostrar
-                </button>
-              </div>
-            </div>
-
-            <label class="flex items-center gap-2.5 pt-0.5 cursor-pointer select-none text-xs text-slate-600 hover:text-slate-800">
-              <input id="sso-strict-role-filter" type="checkbox" checked class="w-4 h-4 rounded border-slate-300 accent-[#1A56B2]" />
-              <span>Abrir directamente mi portal asignado según mi perfil</span>
-            </label>
-
-            <div id="sso-login-error" class="hidden p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold text-xs"></div>
-
-            <button
-              type="submit"
-              class="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#0C1D36] via-[#143870] to-[#1A56B2] hover:from-[#15458F] hover:to-[#1A56B2] text-white font-bold text-xs sm:text-sm shadow-lg shadow-blue-900/15 hover:shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2"
-            >
-              <span>Ingresar a mi Portal San Bao</span>
-              <span class="text-base leading-none">→</span>
-            </button>
-          </form>
+          <span class="px-2.5 py-0.5 rounded-full bg-[#EBF2FC] text-[#1A56B2] font-bold text-[10px]">
+            Acceso Seguro
+          </span>
         </div>
 
-        <!-- Accesos Rápidos de Desarrollo: EXCLUSIVAMENTE EN UN COMBOBOX -->
-        <div class="pt-5 border-t border-slate-200/90">
-          <div class="p-4 rounded-2xl bg-[#F8FAFC] border border-slate-200/90 space-y-2.5">
-            <div class="flex items-center justify-between gap-2">
-              <label for="sso-dev-profile-combobox" class="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-[#1A56B2]"></span>
-                <span>🛠️ Acceso Rápido Desarrollo (Perfiles y Portales)</span>
-              </label>
-              <span class="text-[10px] font-semibold text-slate-400">Selección en 1 clic</span>
-            </div>
+        <div id="sso-logout-banner" class="hidden p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+          <span>✅</span>
+          <span>Has cerrado tu sesión de forma segura.</span>
+        </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <select
-                id="sso-dev-profile-combobox"
-                onchange="onSsoDevComboboxChange(this.value)"
-                class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 hover:border-[#1A56B2] focus:border-[#1A56B2] focus:outline-none text-xs font-bold text-[#0C1D36] shadow-2xs cursor-pointer"
-              >
-                <option value="">— Selecciona un Perfil / Portal para Acceso Rápido —</option>
-                <optgroup label="Portal Administrativo &amp; Dirección Holding">
-                  <option value="admin@sanbao.cl">🏢 1. Portal Administrativo (Superadmin ERP) — admin@sanbao.cl</option>
-                  <option value="finanzas@sanbao.cl">💼 1. Portal Administrativo (Finanzas &amp; SII) — finanzas@sanbao.cl (12.456.789-0)</option>
-                </optgroup>
-                <optgroup label="Portales de Usuarios Finales (Escuela &amp; Clínica SpA)">
-                  <option value="19.876.543-0">🎓 Portal de Alumnos — Diego Valenzuela (19.876.543-0)</option>
-                  <option value="14.112.233-K">👨‍🏫 Portal de Docentes — Prof. Zhiwei Chen (14.112.233-K)</option>
-                  <option value="tutor.clinico@sanbao.cl">🩺 Portal de Tutores — Dr. Roberto Gómez (12.876.543-1)</option>
-                  <option value="17.123.456-5">💚 6. Portal de Pacientes (Clínica SpA) — Rodrigo Silva (17.123.456-5)</option>
-                </optgroup>
-                <optgroup label="Portal Académico &amp; Portal de Secretaría (Escuela San Bao SpA)">
-                  <option value="secretaria.sede@sanbao.cl">🗂️ 7. Portal de Secretaría (Gestión Secretaría) — Claudia Fuentes (16.543.210-9)</option>
-                  <option value="direccion.academica@sanbao.cl">🏛️ 2. Portal Académico (Dirección Académica) — Dra. Marcela Pérez (11.345.678-9)</option>
-                  <option value="coordinacion@sanbao.cl">📋 2. Portal Académico (Gestión Académica) — Lic. Camilo San Martín (14.567.890-1)</option>
-                </optgroup>
-                <optgroup label="Portal Clínico MTC (Clínica San Bao SpA)">
-                  <option value="direccion.clinica@sanbao.cl">🏥 3. Portal Clínico (Dirección Clínica MTC) — Dr. Roberto Valenzuela (10.987.654-2)</option>
-                  <option value="recepcion@sanbao.cl">👩‍⚕️ 3. Portal Clínico (Recepción Médica) — Valentina Morales (18.234.567-8)</option>
-                </optgroup>
-                <optgroup label="Herramientas de Desarrollo &amp; Demos Cliente">
-                  <option value="__DEMO_ACADEMIA__">🎓 Demo Cliente Independiente 1: Academia &amp; Matrículas (/demo-academia)</option>
-                  <option value="__DEMO_CLINICA__">🩺 Demo Cliente Independiente 2: Clínica &amp; Boxes (/demo-clinica)</option>
-                  <option value="__HUB_PORTALS__">🖥️ Vista Hub: Los 6 Portales &amp; Simulador Dispositivos</option>
-                  <option value="__UNLOCK_ALL__">⚡ Desbloquear todos los menús y portales (Modo Desarrollo)</option>
-                </optgroup>
-              </select>
-
-              <button
-                type="button"
-                onclick="triggerSelectedSsoDevCombo()"
-                class="px-4 py-2.5 rounded-xl bg-[#EBF2FC] hover:bg-[#1A56B2] text-[#1A56B2] hover:text-white border border-blue-200 font-bold text-xs transition-all cursor-pointer whitespace-nowrap"
-              >
-                Acceder →
-              </button>
-            </div>
-
-            <div id="sso-dev-combo-summary" class="text-[11px] text-slate-500 font-medium px-1">
-              Elige cualquier perfil en el combobox para autocompletar e ingresar directamente a su portal.
+        <form onsubmit="submitUnifiedSsoLogin(event)" class="space-y-3.5 text-xs">
+          <div class="space-y-1">
+            <label for="sso-login-identifier" class="block font-bold text-slate-700">
+              RUT o Correo Electrónico
+            </label>
+            <div class="relative flex items-center">
+              <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">👤</span>
+              <input
+                id="sso-login-identifier"
+                type="text"
+                required
+                value="admin@sanbao.cl"
+                placeholder="Ej: 19.876.543-0 o nombre@sanbao.cl"
+                class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-[#0C1D36] font-semibold border border-slate-200 focus:border-[#1A56B2] focus:ring-3 focus:ring-blue-500/10 focus:outline-none transition-all"
+              />
             </div>
           </div>
+
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label for="sso-login-password" class="block font-bold text-slate-700">
+                Contraseña
+              </label>
+              <span class="text-[10px] text-slate-400">
+                Clave: <code class="font-mono font-bold text-[#1A56B2] bg-blue-50 px-1.5 py-0.5 rounded">SanBao#2026</code>
+              </span>
+            </div>
+            <div class="relative flex items-center">
+              <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">🔑</span>
+              <input
+                id="sso-login-password"
+                type="password"
+                required
+                value="SanBao#2026"
+                placeholder="Ingresa tu contraseña"
+                class="w-full pl-10 pr-24 py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-[#0C1D36] font-mono font-bold border border-slate-200 focus:border-[#1A56B2] focus:ring-3 focus:ring-blue-500/10 focus:outline-none transition-all"
+              />
+              <button
+                type="button"
+                id="sso-toggle-pass-btn"
+                onclick="toggleSsoPasswordVisibility()"
+                class="absolute right-2 px-2 py-1 rounded-lg text-[10px] font-semibold text-slate-500 hover:text-[#1A56B2] hover:bg-slate-100 transition cursor-pointer"
+              >
+                👁️ Mostrar
+              </button>
+            </div>
+          </div>
+
+          <label class="flex items-center gap-2 pt-0.5 cursor-pointer select-none text-[11px] text-slate-600 hover:text-slate-800">
+            <input id="sso-strict-role-filter" type="checkbox" checked class="w-3.5 h-3.5 rounded border-slate-300 accent-[#1A56B2]" />
+            <span>Abrir directamente mi portal asignado según mi perfil</span>
+          </label>
+
+          <div id="sso-login-error" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold text-xs"></div>
+
+          <button
+            type="submit"
+            class="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-[#0C1D36] via-[#143870] to-[#1A56B2] hover:from-[#15458F] hover:to-[#1A56B2] text-white font-bold text-xs shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <span>Ingresar a mi Portal San Bao</span>
+            <span class="text-sm leading-none">→</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- 3. ABAJO: ACCESO RÁPIDO DESARROLLO -->
+      <div class="px-6 pb-6 pt-4 bg-[#F8FAFC] border-t border-slate-200/90 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <label for="sso-dev-profile-combobox" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-[#1A56B2]"></span>
+            <span>🛠️ Acceso Rápido Desarrollo (Perfiles y Portales)</span>
+          </label>
+          <span class="text-[10px] font-semibold text-slate-400">1 clic</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <select
+            id="sso-dev-profile-combobox"
+            onchange="onSsoDevComboboxChange(this.value)"
+            class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white border border-slate-300 hover:border-[#1A56B2] focus:border-[#1A56B2] focus:outline-none text-xs font-bold text-[#0C1D36] shadow-2xs cursor-pointer"
+          >
+            <option value="">— Selecciona un Perfil / Portal —</option>
+            <optgroup label="Portal Administrativo &amp; Dirección">
+              <option value="admin@sanbao.cl">🏢 1. Portal Administrativo (Superadmin ERP) — admin@sanbao.cl</option>
+              <option value="finanzas@sanbao.cl">💼 1. Portal Administrativo (Finanzas &amp; SII) — finanzas@sanbao.cl</option>
+            </optgroup>
+            <optgroup label="Portales de Usuarios Finales">
+              <option value="19.876.543-0">🎓 Portal de Alumnos — Diego Valenzuela (19.876.543-0)</option>
+              <option value="14.112.233-K">👨‍🏫 Portal de Docentes — Prof. Zhiwei Chen (14.112.233-K)</option>
+              <option value="tutor.clinico@sanbao.cl">🩺 Portal de Tutores — Dr. Roberto Gómez (12.876.543-1)</option>
+              <option value="17.123.456-5">💚 6. Portal de Pacientes — Rodrigo Silva (17.123.456-5)</option>
+            </optgroup>
+            <optgroup label="Portal Académico &amp; Secretaría">
+              <option value="secretaria.sede@sanbao.cl">🗂️ 7. Portal de Secretaría — Claudia Fuentes (16.543.210-9)</option>
+              <option value="direccion.academica@sanbao.cl">🏛️ 2. Portal Académico (Dirección Académica) — Dra. Marcela Pérez</option>
+              <option value="coordinacion@sanbao.cl">📋 2. Portal Académico (Gestión Académica) — Lic. Camilo San Martín</option>
+            </optgroup>
+            <optgroup label="Portal Clínico MTC">
+              <option value="direccion.clinica@sanbao.cl">🏥 3. Portal Clínico (Dirección Clínica MTC) — Dr. Roberto Valenzuela</option>
+              <option value="recepcion@sanbao.cl">👩‍⚕️ 3. Portal Clínico (Recepción Médica) — Valentina Morales</option>
+            </optgroup>
+            <optgroup label="Herramientas de Desarrollo">
+              <option value="__HUB_PORTALS__">🖥️ Vista Hub: Los 6 Portales &amp; Simulador Dispositivos</option>
+              <option value="__UNLOCK_ALL__">⚡ Desbloquear todos los menús y portales (Modo Desarrollo)</option>
+            </optgroup>
+          </select>
+
+          <button
+            type="button"
+            onclick="triggerSelectedSsoDevCombo()"
+            class="px-3.5 py-2 rounded-xl bg-[#EBF2FC] hover:bg-[#1A56B2] text-[#1A56B2] hover:text-white border border-blue-200 font-bold text-xs transition-all cursor-pointer whitespace-nowrap"
+          >
+            Acceder →
+          </button>
+        </div>
+
+        <div id="sso-dev-combo-summary" class="text-[10px] text-slate-500 font-medium">
+          Elige cualquier perfil en el selector para ingresar directamente a su portal.
         </div>
       </div>
 
@@ -31501,7 +31376,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <div>
               <label class="block font-bold text-slate-700 mb-1 text-[11px]">Medio de Pago Tesorería</label>
               <select id="modal-clin-inv-pay-method" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold">
-                <option value="TRANSFER">Transferencia Bancaria (Cta. Cte. Santander Clínica SpA)</option>
+                <option value="TRANSFER">Transferencia Bancaria (Cta. Cte. Santander Clínica)</option>
                 <option value="WEBPAY">Pago Electrónico / Portal Proveedores</option>
                 <option value="CHECK">Vale Vista / Cheque Corporativo</option>
               </select>
@@ -31524,229 +31399,5 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
       </div>
     </div>
   </div>
-
-  <!-- ========================================================================= -->
-  <!-- CONTROLADOR DE DEMOS SEPARADOS PARA CLIENTE: ACADEMIA Y CLÍNICA           -->
-  <!-- ========================================================================= -->
-  <script>
-    const CLIENT_DEMO_DEFINITIONS = {
-      academia: {
-        badge: 'DEMO 01 • ÁREA ACADÉMICA INDEPENDIENTE',
-        urlPill: '/demo-academia',
-        title: '🎓 Demo Academia & Control Curricular — Escuela San Bao SpA',
-        subtitle: 'Entorno aislado exclusivamente para el Instituto de Medicina China Clásica SpA: Dirección Académica, Gestión Académica (7 paneles), Matrículas con Filtros y Resumen, Secretaría, Portal Alumno y Portal Docente.',
-        bannerClasses: 'rounded-3xl p-5 shadow-lg border-2 space-y-4 transition-all bg-gradient-to-r from-[#0C1D36] via-indigo-950 to-[#1A56B2] border-indigo-400/50 text-white',
-        allowedSidebarTabs: ['academic-direction', 'academic-coordinator', 'academic', 'student', 'teacher-portal', 'lms', 'finance'],
-        steps: [
-          {
-            id: 'matriculas',
-            label: '1. Panel Matrículas & Resumen Filtrado',
-            desc: 'Filtro Sede, Estado Financiero, Diplomados/Cursos + Resumen',
-            action: () => { switchTab('academic-coordinator'); switchCoordSubtab('matriculas'); }
-          },
-          {
-            id: 'nueva-matricula',
-            label: '2. + Nueva Matrícula Digital (5 Pasos)',
-            desc: 'Verificación RUT, Contrato FEA, Webpay Plus y Portal',
-            action: () => { switchTab('academic-coordinator'); switchCoordSubtab('matriculas'); openEnrollmentModal(); }
-          },
-          {
-            id: 'direccion',
-            label: '3. Dirección Académica & Mallas',
-            desc: 'Catálogo de Diplomados/Cursos y Docentes RRHH',
-            action: () => { switchTab('academic-direction'); switchAcadSubtab('programs'); }
-          },
-          {
-            id: 'expedientes',
-            label: '4. Expedientes & Hoja de Vida',
-            desc: 'Nómina estudiantil, kárdex de notas y bitácora',
-            action: () => { switchTab('academic-coordinator'); switchCoordSubtab('enrollments'); }
-          },
-          {
-            id: 'notas-congelamiento',
-            label: '5. Notas, Congelamiento & Traspasos',
-            desc: 'Calificaciones, suspensión temporal y cambios de curso',
-            action: () => { switchTab('academic-coordinator'); switchCoordSubtab('grades'); }
-          },
-          {
-            id: 'practicas-diplomas',
-            label: '6. Prácticas Clínicas & Diplomas',
-            desc: 'Habilitación clínica y emisión de certificados oficiales',
-            action: () => { switchTab('academic-coordinator'); switchCoordSubtab('documents'); }
-          },
-          {
-            id: 'portal-alumno',
-            label: '7. Portal del Alumno & QR MINSAL',
-            desc: 'Autoatención estudiantil, cuotas y asistencia QR',
-            action: () => { switchTab('student'); }
-          },
-          {
-            id: 'portal-docente',
-            label: '8. Portal Docente & Secretaría',
-            desc: 'Libro de clases docente y gestión de secretaría de sede',
-            action: () => { switchTab('teacher-portal'); }
-          }
-        ]
-      },
-      clinica: {
-        badge: 'DEMO 02 • ÁREA CLÍNICA INDEPENDIENTE',
-        urlPill: '/demo-clinica',
-        title: '🩺 Demo Clínica & Dirección Asistencial MTC — Clínica San Bao SpA',
-        subtitle: 'Entorno aislado exclusivamente para Servicios Clínicos San Bao SpA: Toma de Hora Semanal (Acupuntura y Tui na), Tag "Hoy", Cierre de Turnos en Calendario, Pacientes Afectados, Sobrecupos y Solicitudes de Pago.',
-        bannerClasses: 'rounded-3xl p-5 shadow-lg border-2 space-y-4 transition-all bg-gradient-to-r from-rose-950 via-[#0C1D36] to-rose-900 border-rose-400/50 text-white',
-        allowedSidebarTabs: ['clinical', 'clinical-management', 'patient-portal', 'tutor-portal', 'finance'],
-        steps: [
-          {
-            id: 'agenda-semanal',
-            label: '1. Toma de Hora Semanal (Acu / Tui na)',
-            desc: 'Turnos AM/PM/Vespertino, filtro por tutor y sobrecupo manual',
-            action: () => { switchTab('clinical'); switchClinicalModuleSubtab('weekly-booking'); }
-          },
-          {
-            id: 'agenda-hoy',
-            label: '2. Tag "📍 Hoy" → Agenda del Día',
-            desc: 'Apertura inmediata de bloques de hoy y boxes clínicos',
-            action: () => { switchTab('clinical'); openClinicalTodayAgenda(); }
-          },
-          {
-            id: 'cierres-turno',
-            label: '3. Calendario & Cierre de Turnos',
-            desc: 'Cerrar Acupuntura o Tui na por día, semana, mes o indefinido',
-            action: () => { switchTab('clinical-management'); switchClinicalSubtab('shifts'); }
-          },
-          {
-            id: 'pacientes-afectados',
-            label: '4. Pacientes Afectados (WhatsApp/Llamada)',
-            desc: 'Nómina automática por cierre y propuesta de nueva hora',
-            action: () => { switchTab('clinical'); switchClinicalModuleSubtab('affected-patients'); }
-          },
-          {
-            id: 'sobrecupos',
-            label: '5. Solicitudes de Sobrecupo (Dirección)',
-            desc: 'Autorización o rechazo de sobrecupos en Dirección Clínica',
-            action: () => { switchTab('clinical-management'); switchClinicalSubtab('overbookings'); }
-          },
-          {
-            id: 'pagos-sobrecupos',
-            label: '6. Solicitud de Pago a Finanzas (Factura)',
-            desc: 'Adjuntar factura en Dirección Clínica y pagar en Finanzas',
-            action: () => { switchTab('clinical-management'); switchClinicalSubtab('payment-requests'); }
-          },
-          {
-            id: 'insumos-ficha',
-            label: '7. Despacho 27 Insumos & Ficha MTC',
-            desc: 'Control de agujas/moxa por turno y Ficha Ley 20.584',
-            action: () => { switchTab('clinical'); switchClinicalModuleSubtab('supply-dispatch'); }
-          },
-          {
-            id: 'portal-paciente',
-            label: '8. Portal Pacientes & Tutores Clínicos',
-            desc: 'Control de packs de sesiones y supervisión clínica',
-            action: () => { switchTab('patient-portal'); }
-          }
-        ]
-      }
-    };
-
-    window.activeClientDemoMode = null;
-    window.activeClientDemoStepId = null;
-
-    function activateClientDemoMode(mode, initialStepId) {
-      const banner = document.getElementById('client-demo-tour-banner');
-      const btnAll = document.getElementById('btn-hdr-demo-all');
-      const ssoModal = document.getElementById('sso-login-overlay');
-      if (ssoModal) ssoModal.classList.add('hidden');
-
-      if (!mode || mode === 'all') {
-        window.activeClientDemoMode = null;
-        if (banner) banner.classList.add('hidden');
-        if (btnAll) btnAll.classList.add('hidden');
-        window.currentAuthenticatedSsoRole = 'admin';
-        applySidebarPermissionsForRole('admin');
-        switchTab('portals');
-        return;
-      }
-
-      const def = CLIENT_DEMO_DEFINITIONS[mode];
-      if (!def) return;
-
-      window.activeClientDemoMode = mode;
-      if (btnAll) btnAll.classList.remove('hidden');
-
-      // Configurar sociedad correspondiente
-      const companySelect = document.getElementById('company-select');
-      if (companySelect) {
-        companySelect.value = mode === 'academia' ? 'instituto' : 'clinica';
-        if (typeof onCompanyChange === 'function') onCompanyChange();
-      }
-
-      // Aislar la barra lateral estrictamente a los módulos del Demo seleccionado
-      const strictCheckbox = document.getElementById('sso-strict-role-filter');
-      if (strictCheckbox) strictCheckbox.checked = true;
-      window.currentAuthenticatedSsoRole = mode === 'academia' ? 'coordinador' : 'director';
-      applySidebarPermissionsForRole(window.currentAuthenticatedSsoRole, def.allowedSidebarTabs);
-
-      // Poblar el banner interactivo de recorrido guiado
-      if (banner) {
-        banner.className = def.bannerClasses;
-        banner.classList.remove('hidden');
-      }
-      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      setTxt('client-demo-badge', def.badge);
-      setTxt('client-demo-url-pill', def.urlPill);
-      setTxt('client-demo-title', def.title);
-      setTxt('client-demo-subtitle', def.subtitle);
-
-      const targetStepId = initialStepId || def.steps[0].id;
-      runClientDemoStep(mode, targetStepId);
-    }
-
-    function runClientDemoStep(mode, stepId) {
-      const def = CLIENT_DEMO_DEFINITIONS[mode];
-      if (!def) return;
-      const step = def.steps.find(s => s.id === stepId) || def.steps[0];
-      window.activeClientDemoStepId = step.id;
-
-      const grid = document.getElementById('client-demo-steps-grid');
-      if (grid) {
-        grid.innerHTML = def.steps.map(s => {
-          const isCurrent = s.id === step.id;
-          const cardCls = isCurrent
-            ? 'p-2.5 rounded-xl bg-white text-slate-900 border-2 border-amber-300 shadow-md text-left transition cursor-pointer'
-            : 'p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 text-left transition cursor-pointer';
-          const descCls = isCurrent ? 'text-[10px] text-slate-600 mt-0.5 line-clamp-1' : 'text-[10px] text-white/75 mt-0.5 line-clamp-1';
-          return `
-            <button type="button" onclick="runClientDemoStep('${mode}', '${s.id}')" class="${cardCls}">
-              <div class="font-extrabold text-xs flex items-center justify-between gap-1">
-                <span>${s.label}</span>
-                ${isCurrent ? '<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px]">ACTIVO</span>' : ''}
-              </div>
-              <div class="${descCls}">${s.desc}</div>
-            </button>
-          `;
-        }).join('');
-      }
-
-      if (typeof step.action === 'function') {
-        step.action();
-      }
-      if (typeof lucide !== 'undefined' && lucide.createIcons) {
-        lucide.createIcons();
-      }
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      const path = window.location.pathname || '';
-      const params = new URLSearchParams(window.location.search);
-      const demoParam = (params.get('demo') || '').toLowerCase();
-      const stepParam = params.get('step') || null;
-
-      if (path.includes('/demo-academia') || demoParam === 'academia') {
-        setTimeout(() => activateClientDemoMode('academia', stepParam), 150);
-      } else if (path.includes('/demo-clinica') || demoParam === 'clinica') {
-        setTimeout(() => activateClientDemoMode('clinica', stepParam), 150);
-      }
-    });
-  </script>
 </body>
 </html>

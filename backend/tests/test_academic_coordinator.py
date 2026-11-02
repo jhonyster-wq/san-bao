@@ -370,31 +370,4 @@ def test_coordinator_matriculas_panel_filters_and_summary(client: TestClient, db
         assert checker.parents_by_id[pane_id][-1] == "tab-academic-coordinator"
 
 
-def test_separate_client_demos_academia_and_clinica(client: TestClient):
-    """
-    Verifica los entornos de Demo separados para mostrar al cliente:
-    - /demo (Portal de Lanzamiento con Demo Academia y Demo Clínica separados)
-    - /demo-academia (Demo exclusivo de Academia y sus funcionalidades)
-    - /demo-clinica (Demo exclusivo de Clínica y sus funcionalidades)
-    """
-    res_hub = client.get("/demo")
-    assert res_hub.status_code == 200
-    assert "/demo-academia" in res_hub.text
-    assert "/demo-clinica" in res_hub.text
-    assert "Demo Academia" in res_hub.text
-    assert "Demo Clínica" in res_hub.text
-
-    res_acad = client.get("/demo-academia")
-    assert res_acad.status_code == 200
-    assert "CLIENT_DEMO_DEFINITIONS" in res_acad.text
-    assert "activateClientDemoMode" in res_acad.text
-    assert "runClientDemoStep" in res_acad.text
-    assert 'id="client-demo-tour-banner"' in res_acad.text
-
-    res_clin = client.get("/demo-clinica")
-    assert res_clin.status_code == 200
-    assert 'id="btn-hdr-demo-academia"' in res_clin.text
-    assert 'id="btn-hdr-demo-clinica"' in res_clin.text
-
-
 

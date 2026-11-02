@@ -2807,12 +2807,12 @@ class AcademicCoordinatorService:
                 "clinical_grade": meta_qr["clinical_grade"],
                 "tutor_id": str(ch.tutor_id) if ch.tutor_id else None,
                 "tutor_name": tutor_name,
-                "tutor_entity": "Clínica San Bao SpA (Servicios Clínicos San Bao SpA)",
+                "tutor_entity": "Área Clínica",
                 "status": "APROBADO_TUTOR" if ch.status == "APPROVED" else ch.status,
                 "notes": meta_qr["notes"],
             })
 
-        # Finanzas: Compromisos, Cuotas y Pagos (Escuela San Bao SpA)
+        # Finanzas: Compromisos, Cuotas y Pagos
         commitments = (
             self.db.query(PaymentCommitment)
             .filter(PaymentCommitment.person_id == person.id)
@@ -2820,7 +2820,7 @@ class AcademicCoordinatorService:
             .all()
         )
         if not commitments and latest_enr:
-            # Asegurar compromiso arancelario de muestra en Escuela San Bao SpA para el alumno
+            # Asegurar compromiso arancelario de muestra para el alumno
             from app.modules.finance.services.finance_hub_service import FinanceHubService
             from app.modules.finance.models.commitment import Installment
             fin_svc = FinanceHubService(self.db)
@@ -2894,7 +2894,7 @@ class AcademicCoordinatorService:
                     "balance": float(inst.balance),
                     "due_date": inst.due_date.isoformat() if inst.due_date else None,
                     "status": "PAGADO" if is_paid_inst else "PENDIENTE",
-                    "payment_method": "Escuela San Bao SpA • Webpay Plus",
+                    "payment_method": "Área Académica • Webpay Plus",
                     "paid_at": inst.paid_at.isoformat() if inst.paid_at else None,
                 })
 
@@ -2988,7 +2988,7 @@ class AcademicCoordinatorService:
             "rut": person.rut,
             "email": person.email,
             "phone": person.phone,
-            "company_entity": "Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)",
+            "company_entity": "Área Académica",
             "company_rut": "77.123.456-8",
             "academic_status": st.status,
             "program_name": prog.name if prog else "Diplomado en Medicina Tradicional China y Acupuntura",
@@ -2999,7 +2999,7 @@ class AcademicCoordinatorService:
             "clinical_hours_pending": total_clin_pending,
             "qr_checkin_url": f"http://127.0.0.1:8000/api/v1/academic/coordinator/clinical-qr-page?student_id={st.id}",
             "financial_summary": {
-                "company_entity": "Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)",
+                "company_entity": "Área Académica",
                 "total_paid": float(total_paid),
                 "total_pending": float(total_debt),
                 "status_label": "AL DÍA" if total_debt == 0 or total_paid > 0 else "CON SALDO PENDIENTE",
@@ -3013,7 +3013,7 @@ class AcademicCoordinatorService:
                 "full_name": full_student_name,
                 "email": person.email,
                 "phone": person.phone,
-                "company_entity": "Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)",
+                "company_entity": "Área Académica",
                 "status": st.status,
                 "academic_status": st.status,
                 "admission_date": st.admission_date.isoformat() if st.admission_date else None,
@@ -3645,7 +3645,7 @@ class AcademicCoordinatorService:
                 "title": "MTC-101 • Fundamentos de Medicina China y Filosofía Taoísta",
                 "schedule": f"{today_iso} • 09:00 - 13:00 hrs",
                 "room_or_box": "Sala Magistral Laozi (Piso 2)",
-                "responsible": "Dra. Marcela Pérez Morales (Docente • Escuela San Bao SpA)",
+                "responsible": "Dra. Marcela Pérez Morales (Docente)",
                 "modality": "Semipresencial",
                 "participants_count": 28,
                 "status": "EN CURSO",
@@ -3660,7 +3660,7 @@ class AcademicCoordinatorService:
                 "title": "Atención Clínica Acupuntura & Supervisión de Internado MINSAL",
                 "schedule": f"{today_iso} • 09:00 - 13:00 hrs",
                 "room_or_box": "Box Clínico 01 y Box 02 • Acupuntura",
-                "responsible": "Dr. Roberto Gómez Valdés (Tutor Clínico • Clínica San Bao SpA)",
+                "responsible": "Dr. Roberto Gómez Valdés (Tutor Clínico)",
                 "modality": "Presencial en Box Clínico",
                 "participants_count": 12,
                 "status": "ACTIVO",
@@ -3675,7 +3675,7 @@ class AcademicCoordinatorService:
                 "title": "Mentoría Clínica de Pulsología, Lengua y Fórmulas Magistrales",
                 "schedule": f"{today_iso} • 14:30 - 17:30 hrs",
                 "room_or_box": "Box Clínico Práctica & Sala Clínica",
-                "responsible": "Dra. Patricia Soto Henríquez (Tutora Clínica • Clínica San Bao SpA)",
+                "responsible": "Dra. Patricia Soto Henríquez (Tutora Clínica)",
                 "modality": "Presencial",
                 "participants_count": 10,
                 "status": "PROGRAMADO",
@@ -3690,7 +3690,7 @@ class AcademicCoordinatorService:
                 "title": "FC-101 • Craneopuntura de Yamamoto (YNSA) y Neurología MTC",
                 "schedule": f"{today_iso} • 18:30 - 21:30 hrs",
                 "room_or_box": "Aula Híbrida Shennong + Streaming Zoom HD",
-                "responsible": "Prof. Chen Lin (Docente • Escuela San Bao SpA)",
+                "responsible": "Prof. Chen Lin (Docente)",
                 "modality": "Híbrido (Presencial y Virtual al mismo tiempo)",
                 "participants_count": 34,
                 "status": "PROGRAMADO",
@@ -3705,7 +3705,7 @@ class AcademicCoordinatorService:
                 "title": "Turno Clínico Rehabilitación Locomotora Tui na y Moxibustión",
                 "schedule": f"{today_iso} • 10:00 - 14:00 hrs",
                 "room_or_box": "Box Viña 01 y Box Viña 03",
-                "responsible": "Dra. Javiera Fuenzalida Ríos (Tutora Clínica • Clínica San Bao SpA)",
+                "responsible": "Dra. Javiera Fuenzalida Ríos (Tutora Clínica)",
                 "modality": "Presencial",
                 "participants_count": 9,
                 "status": "ACTIVO",
@@ -3720,7 +3720,7 @@ class AcademicCoordinatorService:
                 "title": "TUI-101 • Bases y Maniobras de Tuina Tradicional",
                 "schedule": f"{today_iso} • 15:00 - 19:00 hrs",
                 "room_or_box": "Salón Práctico Viña del Mar",
-                "responsible": "Dra. Sofía Lin Zhang (Docente • Escuela San Bao SpA)",
+                "responsible": "Dra. Sofía Lin Zhang (Docente)",
                 "modality": "Presencial",
                 "participants_count": 20,
                 "status": "PROGRAMADO",
@@ -3812,7 +3812,7 @@ class AcademicCoordinatorService:
             clin_grades = []
             mentorship_total = 0
             mentorship_present = 0
-            tutor_name = "Dr. Roberto Gómez Valdés (Clínica San Bao SpA)"
+            tutor_name = "Dr. Roberto Gómez Valdés"
             for ch in all_ch:
                 meta_qr = self._parse_clinical_qr_comments(ch.comments)
                 if meta_qr.get("clinical_grade"):
@@ -3821,7 +3821,7 @@ class AcademicCoordinatorService:
                 if meta_qr.get("mentorship_attended", True):
                     mentorship_present += 1
                 if ch.tutor:
-                    tutor_name = f"Dr(a). {ch.tutor.first_name} {ch.tutor.last_name} (Clínica San Bao SpA)"
+                    tutor_name = f"Dr(a). {ch.tutor.first_name} {ch.tutor.last_name}"
 
             all_scores = grades_vals + clin_grades
             avg_grade = round(sum(all_scores) / len(all_scores), 1) if all_scores else 6.4
@@ -3835,7 +3835,7 @@ class AcademicCoordinatorService:
                 "full_name": full_name,
                 "student_name": full_name,
                 "email": person.email,
-                "company_entity": "Escuela San Bao SpA",
+                "company_entity": "Área Académica",
                 "status": st.status,
                 "program_id": str(prog.id) if prog else None,
                 "program_code": prog.code if prog else "DIP-MTC-01",
@@ -3858,7 +3858,7 @@ class AcademicCoordinatorService:
                 "mentorship_sessions_attended": f"{mentorship_present or 12}/{max(mentorship_total, 12)} sesiones",
                 "assigned_tutor": tutor_name,
                 "assigned_tutor_name": tutor_name,
-                "tutor_company_entity": "Clínica San Bao SpA",
+                "tutor_company_entity": "Área Clínica",
                 "practice_status": "EN PRÁCTICA SUPERVISADA" if st.clinical_practice_approved else "EN EVALUACIÓN",
                 "records_count": len(all_ch),
             })
@@ -3910,9 +3910,9 @@ class AcademicCoordinatorService:
         target_link = enrollment_link if is_inscription else brochure_link
 
         subject = (
-            f"[Escuela San Bao SpA] Link Oficial de Inscripción en Línea — {prog.name} ({prog.code})"
+            f"[San Bao] Link Oficial de Inscripción en Línea — {prog.name} ({prog.code})"
             if is_inscription
-            else f"[Escuela San Bao SpA] Información Curricular, Modalidad y Aranceles — {prog.name} ({prog.code})"
+            else f"[San Bao] Información Curricular, Modalidad y Aranceles — {prog.name} ({prog.code})"
         )
         action_label = "Link de Inscripción en Línea" if is_inscription else "Ficha de Información del Curso / Programa"
 
@@ -3943,9 +3943,9 @@ class AcademicCoordinatorService:
 
     def record_clinical_qr_attendance(self, data: ClinicalQRAttendanceRequest) -> Dict[str, Any]:
         """
-        Registra la lectura de QR de práctica clínica por parte del alumno (Escuela San Bao SpA)
+        Registra la lectura de QR de práctica clínica por parte del alumno
         bajo la normativa de información del Ministerio de Salud (MINSAL: fecha exacta, hora de entrada y hora de salida).
-        El registro queda vinculado al Tutor Clínico de Clínica San Bao SpA para su aprobación.
+        El registro queda vinculado al Tutor Clínico para su aprobación.
         """
         self.ensure_sample_coordinator_data()
         target_student = data.student_id or data.student_id_or_rut
@@ -3954,7 +3954,7 @@ class AcademicCoordinatorService:
         if not st:
             raise EntityNotFoundException("Alumno", str(target_student))
 
-        # Tutor clínico supervisor en Clínica San Bao SpA
+        # Tutor clínico supervisor en Área Clínica
         tutor = None
         if data.tutor_rut_or_id:
             variants = self._normalize_rut_variants(data.tutor_rut_or_id)
@@ -3996,8 +3996,8 @@ class AcademicCoordinatorService:
             "clinical_box": data.clinical_box or "Box Clínico 01 • Acupuntura (Sede Providencia)",
             "mentorship_attended": True,
             "clinical_grade": None,
-            "student_entity": "Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)",
-            "tutor_entity": "Clínica San Bao SpA (Servicios Clínicos San Bao SpA)",
+            "student_entity": "Área Académica",
+            "tutor_entity": "Área Clínica",
             "minsal_normative_verified": True,
             "recorded_at_iso": now_local.isoformat(),
             "notes": data.notes or f"Marcaje QR MINSAL registrado desde Portal del Alumno ({data.action}).",
@@ -4039,14 +4039,14 @@ class AcademicCoordinatorService:
             "student_id": st.id,
             "student_name": updated_portal["student_name"],
             "student_rut": updated_portal["rut"],
-            "student_entity": "Escuela San Bao SpA",
+            "student_entity": "Área Académica",
             "activity_date": act_date.isoformat(),
             "check_in_time": in_time,
             "check_out_time": out_time,
             "hours_completed": record.hours_completed,
             "clinical_box": meta_payload["clinical_box"],
             "tutor_name": f"Dr(a). {tutor.first_name} {tutor.last_name}" if tutor else "Dr. Roberto Gómez Valdés",
-            "tutor_entity": "Clínica San Bao SpA",
+            "tutor_entity": "Área Clínica",
             "status": record.status,
             "student_portal": updated_portal,
         }
@@ -4068,7 +4068,7 @@ class AcademicCoordinatorService:
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Registro QR Práctica Clínica MINSAL — Escuela San Bao SpA</title>
+  <title>Registro QR Práctica Clínica MINSAL — Área Académica</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-900 min-h-screen text-slate-900 p-4 sm:p-8 flex items-center justify-center">
@@ -4079,7 +4079,7 @@ class AcademicCoordinatorService:
           Normativa MINSAL • Trazabilidad Campo Clínico
         </span>
         <h1 class="text-xl font-bold mt-1">Registro QR de Horas de Práctica Clínica</h1>
-        <p class="text-xs text-blue-100">Alumno: Escuela San Bao SpA • Campo Clínico: Clínica San Bao SpA</p>
+        <p class="text-xs text-blue-100">Alumno: Área Académica • Campo Clínico: Área Clínica</p>
       </div>
       <div class="w-12 h-12 rounded-2xl bg-white p-2 flex items-center justify-center shadow">
         <img src="/static/img/logo_sanbao.png" alt="San Bao" class="w-full h-full object-contain" />
@@ -4088,9 +4088,9 @@ class AcademicCoordinatorService:
 
     <div class="p-6 space-y-5 text-xs">
       <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
-        <div class="flex justify-between"><span class="text-slate-500 font-semibold">Alumno Regular (Escuela San Bao SpA):</span><span class="font-bold text-slate-900">{st_name} ({st_rut})</span></div>
+        <div class="flex justify-between"><span class="text-slate-500 font-semibold">Alumno Regular:</span><span class="font-bold text-slate-900">{st_name} ({st_rut})</span></div>
         <div class="flex justify-between"><span class="text-slate-500 font-semibold">Expediente / Programa:</span><span class="font-bold text-[#1A56B2]">{st_num} • {prog_name}</span></div>
-        <div class="flex justify-between"><span class="text-slate-500 font-semibold">Tutor Clínico Supervisor (Clínica San Bao SpA):</span><span class="font-bold text-emerald-800">Dr. Roberto Gómez Valdés</span></div>
+        <div class="flex justify-between"><span class="text-slate-500 font-semibold">Tutor Clínico Supervisor:</span><span class="font-bold text-emerald-800">Dr. Roberto Gómez Valdés</span></div>
       </div>
 
       <!-- Reloj Oficial MINSAL en Vivo -->
@@ -4189,7 +4189,7 @@ class AcademicCoordinatorService:
     def pay_student_installment(self, data: StudentPayInstallmentRequest) -> Dict[str, Any]:
         """
         Permite al alumno pagar una cuota de su Compromiso Arancelario directamente desde su Portal del Alumno,
-        recaudando en Escuela San Bao SpA (Instituto de Medicina China Clásica SpA) y emitiendo Boleta DTE 41.
+        recaudando en Área Académica y emitiendo Boleta DTE 41.
         """
         from app.modules.finance.services.finance_hub_service import FinanceHubService
         from app.modules.finance.models.commitment import Installment
@@ -4242,7 +4242,7 @@ class AcademicCoordinatorService:
             "amount": pay_amount,
             "payment_method": "WEBPAY",
             "reference_number": f"WP-CUOTA-{inst.installment_number}-{auth_code}",
-            "notes": f"Pago en línea Cuota #{inst.installment_number} desde Portal del Alumno • Escuela San Bao SpA",
+            "notes": f"Pago en línea Cuota #{inst.installment_number} desde Portal del Alumno",
             "emit_dte": True,
             "dte_type": 41,
         })
@@ -4252,7 +4252,7 @@ class AcademicCoordinatorService:
             "installment_id": str(inst.id),
             "installment_number": inst.installment_number,
             "paid_amount": pay_amount,
-            "company_entity": "Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)",
+            "company_entity": "Área Académica",
             "payment": payment_res,
             "student_portal": updated_portal,
         }
@@ -4263,12 +4263,12 @@ class AcademicCoordinatorService:
         student_filter: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Retorna la consola de trabajo eficiente del nuevo Portal de Tutores Clínicos (Clínica San Bao SpA):
+        Retorna la consola de trabajo eficiente del nuevo Portal de Tutores Clínicos:
         - El tutor SOLO puede visualizar los turnos clínicos asignados a él (como titular o suplente activo)
           por la Dirección Clínica, junto con los alumnos y registros QR MINSAL de sus propios turnos.
         - Diferenciación Financiera y de RRHH explícita:
-          * Docentes -> Escuela San Bao SpA (Instituto de Medicina China Clásica SpA)
-          * Tutores -> Clínica San Bao SpA (Servicios Clínicos San Bao SpA)
+          * Docentes -> Área Académica
+          * Tutores -> Área Clínica
         """
         from sqlalchemy import and_
         from app.modules.hr.services import HRHubService
@@ -4492,7 +4492,7 @@ class AcademicCoordinatorService:
                     "student_number": st.student_number,
                     "student_name": full_name,
                     "student_rut": person.rut,
-                    "student_entity": "Escuela San Bao SpA",
+                    "student_entity": "Área Académica",
                     "program_name": prog.name if prog else "Diplomado Superior en Medicina China Tradicional",
                     "program_modality": mod_labels.get(p_mod, p_mod),
                     "activity_date": ch.activity_date.isoformat() if ch.activity_date else date.today().isoformat(),
@@ -4540,7 +4540,7 @@ class AcademicCoordinatorService:
                 "full_name": full_name,
                 "student_name": full_name,
                 "email": person.email,
-                "student_entity": "Escuela San Bao SpA",
+                "student_entity": "Área Académica",
                 "program_name": prog.name if prog else "Diplomado Superior en Medicina China Tradicional",
                 "program_code": prog.code if prog else "DIP-MTC-01",
                 "program_modality": mod_labels.get(p_mod, p_mod),
@@ -4572,9 +4572,9 @@ class AcademicCoordinatorService:
                 "rut": tutor_person.formatted_rut if tutor_person else "12.876.543-1",
                 "specialty": tutor_spec,
                 "license_number": tutor_lic,
-                "company_entity": "Clínica San Bao SpA (Servicios Clínicos San Bao SpA)",
+                "company_entity": "Área Clínica",
                 "company_rut": "76.987.654-3",
-                "hr_role": "TUTOR CLÍNICO SUPERVISOR (Clínica San Bao SpA)",
+                "hr_role": "TUTOR CLÍNICO SUPERVISOR",
                 "visibility_scope": "EXCLUSIVO_TURNOS_ASIGNADOS_AL_TUTOR",
             },
             "financial_hr_separation": split_info,
@@ -4606,7 +4606,7 @@ class AcademicCoordinatorService:
     def tutor_approve_clinical_attendance(self, data: TutorApproveAttendanceRequest) -> Dict[str, Any]:
         """
         Aprueba (individual o masivamente) los registros de asistencia y horas prácticas MINSAL
-        desde el Portal de Tutores Clínicos (Clínica San Bao SpA).
+        desde el Portal de Tutores Clínicos.
         """
         target_ids = list(data.log_ids or [])
         if data.log_id and data.log_id not in target_ids:
@@ -4651,7 +4651,7 @@ class AcademicCoordinatorService:
 
     def tutor_record_clinical_evaluation(self, data: TutorRecordEvaluationRequest) -> Dict[str, Any]:
         """
-        Permite al Tutor Clínico (Clínica San Bao SpA) registrar una calificación de práctica clínica/mentoría,
+        Permite al Tutor Clínico registrar una calificación de práctica clínica/mentoría,
         actualizar el % de asistencia a mentoría y opcionalmente aprobar las horas prácticas pendientes del alumno.
         """
         target_st = data.student_id or data.student_id_or_rut

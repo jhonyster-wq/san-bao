@@ -176,10 +176,8 @@ def favicon():
 
 
 @app.get("/app", tags=["Frontend Web"])
-@app.get("/demo-academia", tags=["Demos Cliente Separados (Academia y Clínica)"])
-@app.get("/demo-clinica", tags=["Demos Cliente Separados (Academia y Clínica)"])
 def serve_frontend_app():
-    """Sirve la interfaz web interactiva del Sistema Integral San Bao (y los modos aislados /demo-academia y /demo-clinica)."""
+    """Sirve la interfaz web interactiva del Sistema Integral San Bao."""
     # Buscar archivo HTML compilado / distribuible
     candidates = [
         os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist/index.html")),
@@ -195,138 +193,10 @@ def serve_frontend_app():
     return {"message": "Interfaz frontend disponible en /frontend/dist/index.html"}
 
 
-@app.get("/demo", response_class=HTMLResponse, tags=["Demos Cliente Separados (Academia y Clínica)"])
-def serve_client_demo_hub():
-    """Portal Ejecutivo de Demostración para el Cliente con acceso separado a Demo Academia y Demo Clínica."""
-    html_content = """<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Centro de Demostración Cliente — San Bao (Academia & Clínica Independientes)</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Inter', sans-serif; }
-    .brand-serif { font-family: 'Playfair Display', serif; }
-  </style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
-  <header class="border-b border-white/10 bg-slate-900/80 backdrop-blur-md sticky top-0 z-20">
-    <div class="max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-3.5">
-        <img src="/logo_sanbao.png" alt="San Bao" class="w-11 h-11 rounded-xl bg-white p-1 object-contain shadow" />
-        <div>
-          <span class="text-[10px] font-extrabold uppercase tracking-widest text-amber-400 block">Presentación Oficial para Cliente</span>
-          <h1 class="brand-serif text-xl font-bold text-white">Ecosistema San Bao — Demos Independientes por Área</h1>
-        </div>
-      </div>
-      <div class="flex items-center gap-2.5 text-xs">
-        <a href="/demo-academia" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow transition">🎓 Abrir Demo Academia</a>
-        <a href="/demo-clinica" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow transition">🩺 Abrir Demo Clínica</a>
-        <a href="/app" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-semibold border border-white/15 transition">Vista ERP Completo</a>
-      </div>
-    </div>
-  </header>
-
-  <main class="flex-1 max-w-7xl mx-auto w-full px-6 py-10 space-y-8">
-    <div class="text-center max-w-3xl mx-auto space-y-2">
-      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-400/30 text-xs font-bold">
-        ✨ Entornos Separados de Demostración con Recorrido Guiado Paso a Paso
-      </span>
-      <h2 class="brand-serif text-3xl sm:text-4xl font-bold text-white">Seleccione el Demo que desea presentar al Cliente</h2>
-      <p class="text-sm text-slate-400">
-        Cada entorno aisla su menú lateral, perfiles y barra de recorrido guiado para exhibir de forma clara y ordenada todas las funcionalidades de <strong>Academia</strong> o de <strong>Clínica</strong> por separado.
-      </p>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <!-- TARJETA 1: DEMO ACADEMIA -->
-      <div class="rounded-3xl bg-gradient-to-b from-indigo-950/90 to-slate-900 border-2 border-indigo-500/40 p-7 shadow-2xl flex flex-col justify-between space-y-6">
-        <div class="space-y-4">
-          <div class="flex items-center justify-between gap-2">
-            <span class="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-xs font-extrabold uppercase">
-              DEMO 01 • ÁREA ACADÉMICA INDEPENDIENTE
-            </span>
-            <span class="text-2xl">🎓</span>
-          </div>
-          <div>
-            <h3 class="brand-serif text-2xl font-bold text-white">Demo Academia &amp; Control Curricular</h3>
-            <p class="text-xs text-indigo-200/80 mt-1">Instituto de Medicina China Clásica SpA (Escuela San Bao • Sedes Santiago y Viña del Mar)</p>
-          </div>
-
-          <div class="space-y-2 bg-slate-950/60 p-4 rounded-2xl border border-indigo-500/20 text-xs">
-            <div class="font-extrabold text-indigo-300 uppercase tracking-wider text-[11px] mb-2">Funcionalidades Incluidas en el Recorrido Guiado:</div>
-            <ul class="space-y-2 text-slate-300">
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">1.</span> <span><strong>Dirección Académica:</strong> Catálogo de Diplomados, Cursos y Formación Continua, Mallas Curriculares y asignación de 1 o 2 Docentes activos en RRHH.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">2.</span> <span><strong>Panel 7 — Matrículas &amp; Nómina de Matriculados:</strong> Listado con filtros por <strong>Sede</strong> (Santiago / Viña), <strong>Estado Financiero</strong> (Al Día, Pagado Total, Moroso, Pendiente Pago) y <strong>Diplomados o Cursos</strong>, con <strong>Resumen Ejecutivo dinámico según filtros</strong>.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">3.</span> <span><strong>Flujo Digital de Nueva Matrícula (5 Pasos):</strong> Control anti-duplicidad por RUT, Contrato Educacional con Firma Electrónica FEA, pago Webpay Plus y creación automática de acceso al Portal del Alumno.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">4.</span> <span><strong>Gestión Curricular (Paneles 1 al 6):</strong> Expedientes y Hoja de Vida del Alumno, Entrega de Notas, Activación y Congelamiento, Cambios de Curso, Aprobación de Prácticas Clínicas y Emisión de Certificados y Diplomas Oficiales.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">5.</span> <span><strong>Portales Académicos Conectados:</strong> Portal de Secretaría Académica, Portal del Alumno (con marcaje QR MINSAL) y Portal del Docente.</span></li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="space-y-2.5 pt-2">
-          <a href="/demo-academia" class="w-full py-3.5 px-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition">
-            <span>🚀 Iniciar Demo de Academia (Modo Presentación Cliente)</span>
-          </a>
-          <div class="grid grid-cols-3 gap-2 text-[11px]">
-            <a href="/demo-academia?step=matriculas" class="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-indigo-200 font-bold text-center border border-white/10">Ir a Matrículas &amp; Filtros</a>
-            <a href="/demo-academia?step=direccion" class="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-indigo-200 font-bold text-center border border-white/10">Ir a Malla &amp; Cursos</a>
-            <a href="/demo-academia?step=portal-alumno" class="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-indigo-200 font-bold text-center border border-white/10">Ir a Portal Alumno</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- TARJETA 2: DEMO CLÍNICA -->
-      <div class="rounded-3xl bg-gradient-to-b from-rose-950/90 to-slate-900 border-2 border-rose-500/40 p-7 shadow-2xl flex flex-col justify-between space-y-6">
-        <div class="space-y-4">
-          <div class="flex items-center justify-between gap-2">
-            <span class="px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-400/30 text-xs font-extrabold uppercase">
-              DEMO 02 • ÁREA CLÍNICA INDEPENDIENTE
-            </span>
-            <span class="text-2xl">🩺</span>
-          </div>
-          <div>
-            <h3 class="brand-serif text-2xl font-bold text-white">Demo Clínica &amp; Dirección Asistencial MTC</h3>
-            <p class="text-xs text-rose-200/80 mt-1">Servicios Clínicos San Bao SpA (Boxes Acupuntura, Tui na y Práctica Supervisada)</p>
-          </div>
-
-          <div class="space-y-2 bg-slate-950/60 p-4 rounded-2xl border border-rose-500/20 text-xs">
-            <div class="font-extrabold text-rose-300 uppercase tracking-wider text-[11px] mb-2">Funcionalidades Incluidas en el Recorrido Guiado:</div>
-            <ul class="space-y-2 text-slate-300">
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">1.</span> <span><strong>Gestión Clínica Organizada en 5 Paneles:</strong> Toma de Hora Semanal por turnos oficiales de <strong>🪡 Acupuntura</strong> (AM, PM, Vespertino) y <strong>👐 Tui na</strong> (AM, PM), búsqueda de disponibilidad por tutor específico y sobrecupos manuales.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">2.</span> <span><strong>Tag "📍 Hoy" — Agenda del Día &amp; Boxes:</strong> Visualización directa de la agenda de hoy y bloques disponibles al presionar el botón/tag <strong>"Hoy"</strong>.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">3.</span> <span><strong>Dirección Clínica — Calendario y Cierre de Turnos por Jornada:</strong> Cierre directo en calendario diferenciando <strong>Acupuntura</strong> y <strong>Tui na</strong> (por día en la semana, semana completa, mes o indefinidamente) aplicando a todos los tutores del turno.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">4.</span> <span><strong>Nómina de Pacientes Afectados por Cierre:</strong> Envío automático a Gestión Clínica con propuesta de nueva hora para reagendar por <strong>WhatsApp directo</strong> o <strong>llamada telefónica</strong>.</span></li>
-              <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">5.</span> <span><strong>Solicitudes de Sobrecupo y Solicitud de Pago a Finanzas:</strong> Aprobación de sobrecupos en Dirección Clínica y envío de Solicitudes de Pago con <strong>factura adjunta</strong> a Finanzas (cambiando automáticamente a estado <strong>PAGADA</strong> al pagar en Finanzas).</span></li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="space-y-2.5 pt-2">
-          <a href="/demo-clinica" class="w-full py-3.5 px-5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition">
-            <span>🚀 Iniciar Demo de Clínica (Modo Presentación Cliente)</span>
-          </a>
-          <div class="grid grid-cols-3 gap-2 text-[11px]">
-            <a href="/demo-clinica?step=agenda-semanal" class="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-rose-200 font-bold text-center border border-white/10">Toma de Hora &amp; Hoy</a>
-            <a href="/demo-clinica?step=cierres-turno" class="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-rose-200 font-bold text-center border border-white/10">Cierre Turnos &amp; Afectados</a>
-            <a href="/demo-clinica?step=pagos-sobrecupos" class="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-rose-200 font-bold text-center border border-white/10">Solicitud Pago &amp; Sobrecupo</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
-</body>
-</html>"""
-    return HTMLResponse(content=html_content)
-
-
 @app.get("/logo_sanbao.png", include_in_schema=False)
 @app.get("/logo_sanbao.jpg", include_in_schema=False)
 def serve_logo():
-    """Sirve el isotipo oficial San Bao (Tres Tesoros: Shen, Jing, Qi - Escuela de Medicina China Clásica)."""
+    """Sirve el isotipo oficial San Bao (Tres Tesoros: Jing, Qi, Shen - Escuela de Medicina China Clásica)."""
     candidates = [
         os.path.join(static_dir, "img", "logo_sanbao.png"),
         os.path.join(static_dir, "img", "logo_sanbao.jpg"),

@@ -201,3 +201,47 @@ class StudentOnboarding(Base, AuditMixin):
     enrollment = relationship("Enrollment")
 
 
+class AdmissionApplication(Base, AuditMixin):
+    """
+    Ficha de Admisión y Registro de Entrevista Académica (Submódulo Gestión Académica):
+    - Puede llenarse desde el endpoint consumido internamente por el portal del sitio web (PORTAL_WEB)
+      o agregarse de forma manual cuando el interesado se acerca presencialmente a la clínica (PRESENCIAL_CLINICA).
+    - Contiene: Correo, Nombre, Apellidos, Teléfono de contacto, Formato de estudio (Presencial o Semipresencial)
+      y Sede a la que desea postular (Santiago o Viña del Mar).
+    - Permite contactar vía WhatsApp, coordinar fecha de entrevista, visualizar en el Listado de Entrevistas,
+      evaluar según el criterio del entrevistador (Aceptar / Rechazar) e iniciar el proceso de matrícula.
+    """
+
+    __tablename__ = "admission_applications"
+    __table_args__ = {"schema": "academic"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    application_code = Column(String(50), unique=True, nullable=False, index=True, comment="Código correlativo de ficha (ej: ADM-2026-0001)")
+    email = Column(String(150), nullable=False, index=True, comment="Correo electrónico del postulante")
+    first_name = Column(String(100), nullable=False, comment="Nombre del postulante")
+    last_name = Column(String(150), nullable=False, comment="Apellidos del postulante")
+    phone = Column(String(50), nullable=False, comment="Teléfono de contacto (WhatsApp)")
+    rut = Column(String(30), nullable=True, index=True, comment="RUT del postulante (opcional en formulario web, requerido al matricular)")
+    study_format = Column(String(40), default="PRESENCIAL", nullable=False, comment="PRESENCIAL o SEMIPRESENCIAL")
+    campus = Column(String(40), default="SANTIAGO", nullable=False, comment="SANTIAGO o VINA_DEL_MAR")
+    program_interest = Column(String(200), nullable=True, comment="Programa o diplomado de interés")
+    source = Column(String(40), default="PORTAL_WEB", nullable=False, comment="PORTAL_WEB o PRESENCIAL_CLINICA")
+    status = Column(
+        String(40),
+        default="PENDIENTE_CONTACTO",
+        nullable=False,
+        index=True,
+        comment="PENDIENTE_CONTACTO, ENTREVISTA_AGENDADA, ACEPTADO, MATRICULADO, RECHAZADO",
+    )
+
+    # Datos de coordinación y ejecución de la entrevista
+    interview_date = Column(String(20), nullable=True, index=True, comment="Fecha programada de entrevista YYYY-MM-DD")
+    interview_time = Column(String(20), nullable=True, comment="Hora programada de entrevista HH:MM")
+    interviewer_name = Column(String(120), nullable=True, comment="Nombre del entrevistador académico")
+    interview_modality = Column(String(40), default="PRESENCIAL", nullable=True, comment="PRESENCIAL o VIDEOCONFERENCIA")
+    interviewer_notes = Column(Text, nullable=True, comment="Ficha técnica / observaciones del entrevistador")
+    evaluation_decision = Column(String(40), default="PENDIENTE", nullable=False, comment="PENDIENTE, ACEPTADO, RECHAZADO")
+    onboarding_id = Column(String(36), nullable=True, comment="ID del proceso de matrícula iniciado tras aceptación")
+
+
+

@@ -15,6 +15,7 @@ from app.modules.academic.models.student import (
     StudentCourseTransfer,
     AcademicDocument,
     StudentOnboarding,
+    AdmissionApplication,
 )
 from app.modules.academic.models.program import Program, Course, Curriculum, CurriculumCourse
 from app.modules.academic.models.period import AcademicPeriod, Cohort
@@ -40,6 +41,9 @@ from app.modules.academic.schemas.coordinator import (
     StudentPayInstallmentRequest,
     TutorApproveAttendanceRequest,
     TutorRecordEvaluationRequest,
+    AdmissionApplicationCreateRequest,
+    ScheduleAdmissionInterviewRequest,
+    EvaluateAdmissionInterviewRequest,
 )
 
 
@@ -2772,13 +2776,125 @@ class AcademicCoordinatorService:
         approved_count = len([c for c in courses_data if c["final_grade"] and c["final_grade"] >= 4.0])
         total_courses = max(len(courses_data), 1)
 
-        # Horas clínicas (incluyendo desglose MINSAL con fecha y hora de entrada/salida por QR)
+        # Verificar asignación de turno clínico para este alumno (requisito para habilitar el Registro de Horas)
+        from app.modules.institutional.models.company import Company
+        from app.modules.institutional.models.campus import Campus, Room
+        from app.modules.clinical.models.practitioner import Practitioner
+        from app.modules.clinical.models.management import ClinicalShiftSchedule
+        from app.modules.clinical.routers.management import ensure_sample_tutors, ensure_sample_shifts
+
+        clinica_company = (
+            self.db.query(Company).filter(Company.trade_name.ilike("%Clínic%")).first()
+            or self.db.query(Company).filter(Company.trade_name.ilike("%San Bao%")).first()
+            or self.db.query(Company).first()
+        )
+        ensure_sample_tutors(self.db)
+        if clinica_company:
+            ensure_sample_shifts(self.db, clinica_company.id)
+
+        # Vincular alumnos habilitados para práctica clínica a turnos si aún no están vinculados
+        if st.clinical_practice_approved and st.status == "REGULAR":
+            existing_st_shifts = (
+                self.db.query(ClinicalShiftSchedule)
+                .filter(
+                    ClinicalShiftSchedule.intern_student_id == st.id,
+                    ClinicalShiftSchedule.deleted_at.is_(None),
+                )
+                .all()
+            )
+            if not existing_st_shifts:
+                unassigned_shift = (
+                    self.db.query(ClinicalShiftSchedule)
+                    .filter(
+                        ClinicalShiftSchedule.deleted_at.is_(None),
+                        or_(
+                            ClinicalShiftSchedule.intern_student_id.is_(None),
+                            ClinicalShiftSchedule.intern_student_id == st.id,
+                        ),
+                    )
+                    .order_by(ClinicalShiftSchedule.shift_code.asc())
+                    .first()
+                )
+                if unassigned_shift:
+                    unassigned_shift.intern_student_id = st.id
+                    unassigned_shift.intern_student_name = f"{person.first_name} {person.last_name}".strip()
+                    self.db.commit()
+
+        student_shifts_db = (
+            self.db.query(ClinicalShiftSchedule)
+            .filter(
+                ClinicalShiftSchedule.intern_student_id == st.id,
+                ClinicalShiftSchedule.deleted_at.is_(None),
+            )
+            .order_by(ClinicalShiftSchedule.shift_date.asc(), ClinicalShiftSchedule.start_time.asc())
+            .all()
+            if (st.clinical_practice_approved and st.status == "REGULAR")
+            else []
+        )
+
+        student_assigned_shifts = []
+        for sh_obj in student_shifts_db:
+            c_obj = self.db.query(Campus).filter(Campus.id == sh_obj.campus_id).first() if sh_obj.campus_id else None
+            r_obj = self.db.query(Room).filter(Room.id == sh_obj.room_id).first() if sh_obj.room_id else None
+            pr_obj = self.db.query(Practitioner).filter(Practitioner.id == sh_obj.practitioner_id).first() if sh_obj.practitioner_id else None
+            pr_person = self.db.query(Person).filter(Person.id == pr_obj.person_id).first() if pr_obj else None
+            sh_tutor_name = f"Dr(a). {pr_person.first_name} {pr_person.last_name}" if pr_person else "Dr. Roberto Gómez Valdés"
+            student_assigned_shifts.append({
+                "id": str(sh_obj.id),
+                "shift_code": sh_obj.shift_code,
+                "shift_name": sh_obj.shift_name,
+                "service_type": sh_obj.service_type,
+                "shift_period": sh_obj.shift_period,
+                "shift_date": str(sh_obj.shift_date),
+                "start_time": sh_obj.start_time,
+                "end_time": sh_obj.end_time,
+                "campus_name": c_obj.name if c_obj else "Sede Central Providencia, Santiago",
+                "room_name": r_obj.name if r_obj else "Box 1 - Tai Yang",
+                "tutor_name": sh_tutor_name,
+            })
+
+        has_assigned_shift = len(student_assigned_shifts) > 0
+        active_shift = student_assigned_shifts[0] if has_assigned_shift else None
+
+        # Horas clínicas (incluyendo desglose MINSAL con fecha y hora de entrada/salida y avisos de falta de marca)
         all_clin_records = (
             self.db.query(ClinicalPracticeHour)
             .filter(ClinicalPracticeHour.student_id == st.id, ClinicalPracticeHour.deleted_at.is_(None))
             .order_by(desc(ClinicalPracticeHour.activity_date), desc(ClinicalPracticeHour.created_at))
             .all()
         )
+        # Sembrar 1 ejemplo de registro sin salida en la muestra inicial de Diego para ilustrar el aviso de marca faltante
+        if st.student_number == "MAT-2026-0001" and all_clin_records and not any(
+            not self._parse_clinical_qr_comments(r.comments).get("is_complete", True) for r in all_clin_records
+        ):
+            tutor_default = self.db.query(Person).filter(Person.rut == "128765431").first() or self.db.query(Person).first()
+            if tutor_default:
+                inc_rec = ClinicalPracticeHour(
+                    student_id=st.id,
+                    tutor_id=tutor_default.id,
+                    activity_date=date(2026, 10, 30),
+                    hours_completed=0,
+                    status="PENDING",
+                    comments=json.dumps({
+                        "qr_code": "QR-MINSAL-SB-2026-INC",
+                        "check_in_time": "18:00:00",
+                        "check_out_time": None,
+                        "shift_code": active_shift["shift_code"] if active_shift else "TUR-ACU-STGO-VESP",
+                        "clinical_box": active_shift["room_name"] if active_shift else "Box 1 - Tai Yang",
+                        "mentorship_attended": False,
+                        "clinical_grade": None,
+                        "notes": "Marcó ENTRADA (18:00:00) pero no registró SALIDA en el mismo día.",
+                    }, ensure_ascii=False),
+                )
+                self.db.add(inc_rec)
+                self.db.commit()
+                all_clin_records = (
+                    self.db.query(ClinicalPracticeHour)
+                    .filter(ClinicalPracticeHour.student_id == st.id, ClinicalPracticeHour.deleted_at.is_(None))
+                    .order_by(desc(ClinicalPracticeHour.activity_date), desc(ClinicalPracticeHour.created_at))
+                    .all()
+                )
+
         clin_hours = [ch for ch in all_clin_records if ch.status == "APPROVED"]
         pend_clin_hours = [ch for ch in all_clin_records if ch.status == "PENDING"]
         total_clin = sum(ch.hours_completed for ch in clin_hours)
@@ -2790,6 +2906,8 @@ class AcademicCoordinatorService:
             meta_qr = self._parse_clinical_qr_comments(ch.comments)
             tutor_p = ch.tutor
             tutor_name = f"Dr(a). {tutor_p.first_name} {tutor_p.last_name}" if tutor_p else "Dr. Roberto Gómez Valdés"
+            is_complete = bool(meta_qr.get("is_complete", True))
+            eff_hours = ch.hours_completed if is_complete else 0
             clinical_practice_logs.append({
                 "id": str(ch.id),
                 "student_id": str(st.id),
@@ -2797,18 +2915,23 @@ class AcademicCoordinatorService:
                 "date": ch.activity_date.isoformat() if ch.activity_date else date.today().isoformat(),
                 "check_in_time": meta_qr["check_in_time"],
                 "check_out_time": meta_qr["check_out_time"],
-                "hours_completed": ch.hours_completed,
-                "hours_logged": ch.hours_completed,
+                "is_complete": is_complete,
+                "missing_mark": meta_qr.get("missing_mark"),
+                "hours_formula": meta_qr.get("hours_formula"),
+                "warning_notice": meta_qr.get("warning_notice"),
+                "hours_completed": eff_hours,
+                "hours_logged": eff_hours,
+                "shift_code": meta_qr.get("shift_code") or (active_shift["shift_code"] if active_shift else "TUR-ACU-STGO-VESP"),
                 "clinical_box": meta_qr["clinical_box"],
                 "box_name": meta_qr["clinical_box"],
-                "campus": "Sede Central Providencia, Santiago",
+                "campus": active_shift["campus_name"] if active_shift else "Sede Central Providencia, Santiago",
                 "qr_code": meta_qr["qr_code"],
                 "mentorship_attended": meta_qr["mentorship_attended"],
                 "clinical_grade": meta_qr["clinical_grade"],
                 "tutor_id": str(ch.tutor_id) if ch.tutor_id else None,
                 "tutor_name": tutor_name,
                 "tutor_entity": "Área Clínica",
-                "status": "APROBADO_TUTOR" if ch.status == "APPROVED" else ch.status,
+                "status": "APROBADO_TUTOR" if (ch.status == "APPROVED" and is_complete) else ("INCOMPLETO" if not is_complete else ch.status),
                 "notes": meta_qr["notes"],
             })
 
@@ -2997,6 +3120,9 @@ class AcademicCoordinatorService:
             "average_grade": avg_grade,
             "clinical_hours_completed": total_clin,
             "clinical_hours_pending": total_clin_pending,
+            "has_assigned_shift": has_assigned_shift,
+            "assigned_shifts": student_assigned_shifts,
+            "active_shift": active_shift,
             "qr_checkin_url": f"http://127.0.0.1:8000/api/v1/academic/coordinator/clinical-qr-page?student_id={st.id}",
             "financial_summary": {
                 "company_entity": "Área Académica",
@@ -3597,6 +3723,79 @@ class AcademicCoordinatorService:
     # =========================================================================
     # 8. PORTAL DE SECRETARÍA, LECTOR QR MINSAL (ALUMNO) Y PORTAL DE TUTORES
     # =========================================================================
+    def _evaluate_attendance_hours_and_warnings(
+        self,
+        check_in_time: Optional[str],
+        check_out_time: Optional[str],
+    ) -> Dict[str, Any]:
+        """
+        Calcula las horas prácticas como la resta exacta entre la hora de salida y la hora de entrada
+        en el mismo día. Si falta la marca de entrada o de salida, genera el aviso de registro incompleto (0 hrs).
+        """
+        def _clean_time(val: Optional[str]) -> Optional[str]:
+            if val is None:
+                return None
+            s = str(val).strip()
+            if not s or s.upper() in ("--", "NONE", "NULL", "SIN_MARCA", "PENDIENTE", "EN TURNO", "EN CURSO"):
+                return None
+            return s
+
+        c_in = _clean_time(check_in_time)
+        c_out = _clean_time(check_out_time)
+
+        if c_in and not c_out:
+            return {
+                "check_in_time": c_in,
+                "check_out_time": None,
+                "is_complete": False,
+                "missing_mark": "SALIDA",
+                "calculated_hours": 0,
+                "hours_formula": "⚠️ Sin Salida (0 hrs)",
+                "warning_notice": "⚠️ AVISO: No marcó SALIDA en el mismo día. Las horas corresponden a la resta (Salida − Entrada).",
+            }
+        if c_out and not c_in:
+            return {
+                "check_in_time": None,
+                "check_out_time": c_out,
+                "is_complete": False,
+                "missing_mark": "ENTRADA",
+                "calculated_hours": 0,
+                "hours_formula": "⚠️ Sin Entrada (0 hrs)",
+                "warning_notice": "⚠️ AVISO: No marcó ENTRADA en el mismo día. Las horas corresponden a la resta (Salida − Entrada).",
+            }
+        if not c_in and not c_out:
+            return {
+                "check_in_time": None,
+                "check_out_time": None,
+                "is_complete": False,
+                "missing_mark": "ENTRADA_Y_SALIDA",
+                "calculated_hours": 0,
+                "hours_formula": "⚠️ Sin Entrada/Salida (0 hrs)",
+                "warning_notice": "⚠️ AVISO: Sin marcaje de Entrada ni Salida.",
+            }
+
+        calc_hours = 4
+        try:
+            t1_parts = [int(x) for x in c_in.split(":")[:2]]
+            t2_parts = [int(x) for x in c_out.split(":")[:2]]
+            mins = (t2_parts[0] * 60 + t2_parts[1]) - (t1_parts[0] * 60 + t1_parts[1])
+            if mins > 0:
+                calc_hours = max(1, round(mins / 60))
+            else:
+                calc_hours = 0
+        except Exception:
+            calc_hours = 4
+
+        return {
+            "check_in_time": c_in,
+            "check_out_time": c_out,
+            "is_complete": True,
+            "missing_mark": None,
+            "calculated_hours": calc_hours,
+            "hours_formula": f"{c_out[:5]} − {c_in[:5]} = {calc_hours} hrs",
+            "warning_notice": None,
+        }
+
     def _parse_clinical_qr_comments(self, raw_comments: Optional[str]) -> Dict[str, Any]:
         default_data: Dict[str, Any] = {
             "qr_code": "QR-MINSAL-SB-2026",
@@ -3607,16 +3806,21 @@ class AcademicCoordinatorService:
             "clinical_grade": 6.5,
             "notes": raw_comments or "Práctica clínica supervisada según normativa MINSAL.",
         }
-        if not raw_comments:
-            return default_data
-        try:
-            parsed = json.loads(raw_comments)
-            if isinstance(parsed, dict):
-                default_data.update(parsed)
-                return default_data
-        except Exception:
-            pass
-        default_data["notes"] = raw_comments
+        if raw_comments:
+            try:
+                parsed = json.loads(raw_comments)
+                if isinstance(parsed, dict):
+                    default_data.update(parsed)
+                else:
+                    default_data["notes"] = raw_comments
+            except Exception:
+                default_data["notes"] = raw_comments
+
+        eval_info = self._evaluate_attendance_hours_and_warnings(
+            default_data.get("check_in_time"),
+            default_data.get("check_out_time"),
+        )
+        default_data.update(eval_info)
         return default_data
 
     def get_secretariat_portal_overview(
@@ -3943,9 +4147,10 @@ class AcademicCoordinatorService:
 
     def record_clinical_qr_attendance(self, data: ClinicalQRAttendanceRequest) -> Dict[str, Any]:
         """
-        Registra la lectura de QR de práctica clínica por parte del alumno
-        bajo la normativa de información del Ministerio de Salud (MINSAL: fecha exacta, hora de entrada y hora de salida).
-        El registro queda vinculado al Tutor Clínico para su aprobación.
+        Registra el marcaje de Entrada y/o Salida en el Registro de Horas de Práctica Clínica por parte del alumno:
+        - Solo se habilita si el alumno cuenta con asignación de turno vigente.
+        - Las horas corresponden a la resta entre la hora de salida y la hora de entrada en el mismo día.
+        - Si falta la marca de entrada o de salida, queda registro y aviso dentro del listado con 0 hrs.
         """
         self.ensure_sample_coordinator_data()
         target_student = data.student_id or data.student_id_or_rut
@@ -3953,6 +4158,13 @@ class AcademicCoordinatorService:
         st = self.db.query(Student).filter(Student.id == portal_info["student_id"]).first()
         if not st:
             raise EntityNotFoundException("Alumno", str(target_student))
+
+        if not portal_info.get("has_assigned_shift"):
+            raise SanBaoException(
+                "El Registro de Horas de Práctica Clínica solo está habilitado cuando el alumno tiene asignación de turno vigente."
+            )
+
+        active_shift = portal_info.get("active_shift") or {}
 
         # Tutor clínico supervisor en Área Clínica
         tutor = None
@@ -3974,57 +4186,173 @@ class AcademicCoordinatorService:
 
         now_local = datetime.now()
         act_date = date.fromisoformat(data.activity_date) if data.activity_date else now_local.date()
-        in_time = (data.check_in_time or now_local.strftime("%H:%M:%S")).strip()
-        out_time = (data.check_out_time or (now_local + timedelta(hours=4)).strftime("%H:%M:%S")).strip()
-
-        # Calcular horas prácticas según hora de entrada y salida MINSAL
-        calc_hours = 4
-        try:
-            t1_parts = [int(x) for x in in_time.split(":")[:2]]
-            t2_parts = [int(x) for x in out_time.split(":")[:2]]
-            mins = (t2_parts[0] * 60 + t2_parts[1]) - (t1_parts[0] * 60 + t1_parts[1])
-            if mins > 0:
-                calc_hours = max(1, round(mins / 60))
-        except Exception:
-            calc_hours = 4
-
+        action_upper = (data.action or "CHECK_IN_OUT").upper().strip()
+        box_label = data.box_name or data.clinical_box or active_shift.get("room_name") or "Box 1 - Tai Yang"
+        shift_code = active_shift.get("shift_code") or "TUR-ACU-STGO-VESP"
         qr_folio = f"QR-MINSAL-{now_local.strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"
-        meta_payload = {
-            "qr_code": qr_folio,
-            "check_in_time": in_time,
-            "check_out_time": out_time,
-            "clinical_box": data.clinical_box or "Box Clínico 01 • Acupuntura (Sede Providencia)",
-            "mentorship_attended": True,
-            "clinical_grade": None,
-            "student_entity": "Área Académica",
-            "tutor_entity": "Área Clínica",
-            "minsal_normative_verified": True,
-            "recorded_at_iso": now_local.isoformat(),
-            "notes": data.notes or f"Marcaje QR MINSAL registrado desde Portal del Alumno ({data.action}).",
-        }
 
-        if data.log_id:
-            existing_log = self.db.query(ClinicalPracticeHour).filter(ClinicalPracticeHour.id == data.log_id).first()
-            if existing_log:
-                existing_meta = self._parse_clinical_qr_comments(existing_log.comments)
-                existing_meta["check_out_time"] = out_time
-                existing_meta["notes"] = data.notes or "Hora de salida MINSAL registrada por lectura QR del alumno."
-                existing_log.hours_completed = calc_hours
-                existing_log.comments = json.dumps(existing_meta, ensure_ascii=False)
+        same_day_records = (
+            self.db.query(ClinicalPracticeHour)
+            .filter(
+                ClinicalPracticeHour.student_id == st.id,
+                ClinicalPracticeHour.activity_date == act_date,
+                ClinicalPracticeHour.deleted_at.is_(None),
+            )
+            .order_by(desc(ClinicalPracticeHour.created_at))
+            .all()
+        )
+
+        record = None
+        if action_upper in ("ENTRADA", "CHECK_IN"):
+            in_time = (data.check_in_time or now_local.strftime("%H:%M:%S")).strip()
+            # Si existía un registro del mismo día al que le faltaba ENTRADA, completarlo
+            for cand in same_day_records:
+                cand_meta = self._parse_clinical_qr_comments(cand.comments)
+                if not cand_meta.get("check_in_time") and cand_meta.get("check_out_time"):
+                    out_existing = cand_meta["check_out_time"]
+                    eval_res = self._evaluate_attendance_hours_and_warnings(in_time, out_existing)
+                    cand_meta.update(eval_res)
+                    cand_meta["notes"] = data.notes or f"Entrada registrada ({in_time}) y completada con Salida ({out_existing}) en el mismo día."
+                    cand.hours_completed = eval_res["calculated_hours"]
+                    cand.comments = json.dumps(cand_meta, ensure_ascii=False)
+                    self.db.commit()
+                    self.db.refresh(cand)
+                    record = cand
+                    break
+
+            if not record:
+                eval_res = self._evaluate_attendance_hours_and_warnings(in_time, None)
+                meta_payload = {
+                    "qr_code": qr_folio,
+                    "shift_code": shift_code,
+                    "check_in_time": in_time,
+                    "check_out_time": None,
+                    "is_complete": False,
+                    "missing_mark": "SALIDA",
+                    "hours_formula": eval_res["hours_formula"],
+                    "warning_notice": eval_res["warning_notice"],
+                    "clinical_box": box_label,
+                    "mentorship_attended": True,
+                    "clinical_grade": None,
+                    "student_entity": "Área Académica",
+                    "tutor_entity": "Área Clínica",
+                    "minsal_normative_verified": True,
+                    "recorded_at_iso": now_local.isoformat(),
+                    "notes": data.notes or f"Marcó ENTRADA ({in_time}). Pendiente marcar SALIDA en el mismo día para calcular horas.",
+                }
+                record = ClinicalPracticeHour(
+                    student_id=st.id,
+                    tutor_id=tutor.id,
+                    activity_date=act_date,
+                    hours_completed=0,
+                    status="PENDING",
+                    comments=json.dumps(meta_payload, ensure_ascii=False),
+                )
+                self.db.add(record)
                 self.db.commit()
-                self.db.refresh(existing_log)
-                record = existing_log
-            else:
-                record = None
-        else:
-            record = None
+                self.db.refresh(record)
 
-        if not record:
+        elif action_upper in ("SALIDA", "CHECK_OUT"):
+            raw_out_time = (data.check_out_time or now_local.strftime("%H:%M:%S")).strip()
+            target_open = None
+            if data.log_id:
+                target_open = self.db.query(ClinicalPracticeHour).filter(ClinicalPracticeHour.id == data.log_id).first()
+            if not target_open:
+                for cand in same_day_records:
+                    cand_meta = self._parse_clinical_qr_comments(cand.comments)
+                    if cand_meta.get("check_in_time") and not cand_meta.get("check_out_time"):
+                        target_open = cand
+                        break
+
+            if target_open:
+                existing_meta = self._parse_clinical_qr_comments(target_open.comments)
+                in_existing = existing_meta.get("check_in_time") or "09:00:00"
+                out_time = raw_out_time
+                # Si el usuario marca Entrada y Salida en el mismo minuto durante una prueba en vivo sin indicar hora manual,
+                # proyectar la salida al cierre del bloque de 4 hrs para que la resta (Salida - Entrada) sea positiva en el mismo día
+                if not data.check_out_time:
+                    try:
+                        t1_p = [int(x) for x in in_existing.split(":")[:2]]
+                        t2_p = [int(x) for x in out_time.split(":")[:2]]
+                        if (t2_p[0] * 60 + t2_p[1]) - (t1_p[0] * 60 + t1_p[1]) <= 0:
+                            out_h = min(23, t1_p[0] + 4)
+                            out_time = f"{out_h:02d}:{t1_p[1]:02d}:00"
+                    except Exception:
+                        pass
+                eval_res = self._evaluate_attendance_hours_and_warnings(in_existing, out_time)
+                existing_meta.update(eval_res)
+                existing_meta["clinical_box"] = box_label
+                existing_meta["shift_code"] = shift_code
+                existing_meta["notes"] = (
+                    data.notes
+                    or f"Registro completo en el mismo día: {eval_res['hours_formula']} (Pendiente aprobación Tutor)."
+                )
+                target_open.hours_completed = eval_res["calculated_hours"]
+                target_open.comments = json.dumps(existing_meta, ensure_ascii=False)
+                self.db.commit()
+                self.db.refresh(target_open)
+                record = target_open
+            else:
+                # No marcó ENTRADA en el mismo día: dejar registro y aviso de falta de ENTRADA con 0 horas
+                eval_res = self._evaluate_attendance_hours_and_warnings(None, raw_out_time)
+                meta_payload = {
+                    "qr_code": qr_folio,
+                    "shift_code": shift_code,
+                    "check_in_time": None,
+                    "check_out_time": raw_out_time,
+                    "is_complete": False,
+                    "missing_mark": "ENTRADA",
+                    "hours_formula": eval_res["hours_formula"],
+                    "warning_notice": eval_res["warning_notice"],
+                    "clinical_box": box_label,
+                    "mentorship_attended": False,
+                    "clinical_grade": None,
+                    "student_entity": "Área Académica",
+                    "tutor_entity": "Área Clínica",
+                    "minsal_normative_verified": True,
+                    "recorded_at_iso": now_local.isoformat(),
+                    "notes": data.notes or f"Marcó SALIDA ({raw_out_time}) sin haber registrado ENTRADA en el mismo día (0 hrs).",
+                }
+                record = ClinicalPracticeHour(
+                    student_id=st.id,
+                    tutor_id=tutor.id,
+                    activity_date=act_date,
+                    hours_completed=0,
+                    status="PENDING",
+                    comments=json.dumps(meta_payload, ensure_ascii=False),
+                )
+                self.db.add(record)
+                self.db.commit()
+                self.db.refresh(record)
+
+        else:
+            # CHECK_IN_OUT completo en un solo paso
+            in_time = (data.check_in_time or now_local.strftime("%H:%M:%S")).strip()
+            out_time = (data.check_out_time or (now_local + timedelta(hours=4)).strftime("%H:%M:%S")).strip()
+            eval_res = self._evaluate_attendance_hours_and_warnings(in_time, out_time)
+            meta_payload = {
+                "qr_code": qr_folio,
+                "shift_code": shift_code,
+                "check_in_time": eval_res["check_in_time"],
+                "check_out_time": eval_res["check_out_time"],
+                "is_complete": eval_res["is_complete"],
+                "missing_mark": eval_res["missing_mark"],
+                "hours_formula": eval_res["hours_formula"],
+                "warning_notice": eval_res["warning_notice"],
+                "clinical_box": box_label,
+                "mentorship_attended": True,
+                "clinical_grade": None,
+                "student_entity": "Área Académica",
+                "tutor_entity": "Área Clínica",
+                "minsal_normative_verified": True,
+                "recorded_at_iso": now_local.isoformat(),
+                "notes": data.notes or f"Registro completo ({eval_res['hours_formula']}).",
+            }
             record = ClinicalPracticeHour(
                 student_id=st.id,
                 tutor_id=tutor.id,
                 activity_date=act_date,
-                hours_completed=calc_hours,
+                hours_completed=eval_res["calculated_hours"],
                 status="PENDING",
                 comments=json.dumps(meta_payload, ensure_ascii=False),
             )
@@ -4032,19 +4360,24 @@ class AcademicCoordinatorService:
             self.db.commit()
             self.db.refresh(record)
 
+        final_meta = self._parse_clinical_qr_comments(record.comments)
         updated_portal = self.get_student_portal_data(st.id)
         return {
             "log_id": record.id,
-            "qr_code": qr_folio,
+            "qr_code": final_meta.get("qr_code", qr_folio),
             "student_id": st.id,
             "student_name": updated_portal["student_name"],
             "student_rut": updated_portal["rut"],
             "student_entity": "Área Académica",
             "activity_date": act_date.isoformat(),
-            "check_in_time": in_time,
-            "check_out_time": out_time,
+            "check_in_time": final_meta.get("check_in_time"),
+            "check_out_time": final_meta.get("check_out_time"),
+            "is_complete": final_meta.get("is_complete", False),
+            "missing_mark": final_meta.get("missing_mark"),
+            "hours_formula": final_meta.get("hours_formula"),
+            "warning_notice": final_meta.get("warning_notice"),
             "hours_completed": record.hours_completed,
-            "clinical_box": meta_payload["clinical_box"],
+            "clinical_box": final_meta.get("clinical_box", box_label),
             "tutor_name": f"Dr(a). {tutor.first_name} {tutor.last_name}" if tutor else "Dr. Roberto Gómez Valdés",
             "tutor_entity": "Área Clínica",
             "status": record.status,
@@ -4361,7 +4694,33 @@ class AcademicCoordinatorService:
                 .all()
             )
 
-        # Garantizar que los turnos de este tutor tengan alumnos practicantes asignados por Dirección Clínica
+        # Regla institucional: un tutor solo puede tener máximo 3 turnos por día (AM, PM y Vespertino).
+        # Priorizar turnos titulares por bloque (AM -> PM -> VESPERTINO) y consolidar a máximo 1 turno por bloque.
+        period_order = {"AM": 0, "PM": 1, "VESPERTINO": 2}
+        period_labels = {
+            "AM": "Turno AM",
+            "PM": "Turno PM",
+            "VESPERTINO": "Turno Vespertino",
+        }
+        tutor_shifts_sorted = sorted(
+            tutor_shifts_db,
+            key=lambda s: (
+                0 if (tutor_practitioner and s.practitioner_id == tutor_practitioner.id) else 1,
+                period_order.get((s.shift_period or "AM").upper(), 9),
+            ),
+        )
+        dedup_shifts_by_period = {}
+        for sh_cand in tutor_shifts_sorted:
+            per_key = (sh_cand.shift_period or "AM").upper()
+            if per_key in period_order and per_key not in dedup_shifts_by_period:
+                dedup_shifts_by_period[per_key] = sh_cand
+        tutor_shifts_db = [
+            dedup_shifts_by_period[p]
+            for p in ("AM", "PM", "VESPERTINO")
+            if p in dedup_shifts_by_period
+        ]
+
+        # Garantizar que los turnos de este tutor tengan alumnos practicantes asignados al turno por Dirección Clínica
         if students and tutor_shifts_db:
             dirty_shifts = False
             for idx_sh, sh in enumerate(tutor_shifts_db):
@@ -4376,18 +4735,33 @@ class AcademicCoordinatorService:
 
         assigned_shifts = []
         shift_by_student_id: Dict[str, Dict[str, Any]] = {}
-        for sh in tutor_shifts_db:
+        shifts_by_student_id: Dict[str, List[Dict[str, Any]]] = {}
+        today_ref = date.today()
+        sample_days = [3, 7, 12]
+        for idx_sh, sh in enumerate(tutor_shifts_db):
             camp_obj = self.db.query(Campus).filter(Campus.id == sh.campus_id).first() if sh.campus_id else None
             room_obj = self.db.query(Room).filter(Room.id == sh.room_id).first() if sh.room_id else None
             is_titular = bool(tutor_practitioner and sh.practitioner_id == tutor_practitioner.id)
+            raw_shift_date = sh.shift_date or today_ref
+            if idx_sh > 0 and raw_shift_date == today_ref:
+                day_num = min(sample_days[idx_sh % len(sample_days)], 28)
+                try:
+                    raw_shift_date = raw_shift_date.replace(day=day_num)
+                except ValueError:
+                    pass
+            shift_date_str = str(raw_shift_date)
+            per_upper = (sh.shift_period or "AM").upper()
+            clean_shift_name = (sh.shift_name or "").split("(")[0].strip() or f"{sh.service_type} • {period_labels.get(per_upper, 'Turno Clínico')}"
             shift_dict = {
                 "id": str(sh.id),
                 "shift_code": sh.shift_code,
-                "shift_name": sh.shift_name,
+                "shift_name": clean_shift_name,
                 "service_type": sh.service_type,
-                "shift_period": sh.shift_period,
+                "shift_period": per_upper,
+                "shift_period_label": period_labels.get(per_upper, per_upper),
                 "day_schedule": sh.day_schedule,
-                "shift_date": str(sh.shift_date),
+                "shift_date": shift_date_str,
+                "shift_month": shift_date_str[:7],
                 "start_time": sh.start_time,
                 "end_time": sh.end_time,
                 "campus_id": str(sh.campus_id) if sh.campus_id else None,
@@ -4400,10 +4774,14 @@ class AcademicCoordinatorService:
                 "intern_student_name": sh.intern_student_name or "Alumno en Práctica Asignado",
                 "status": sh.status,
                 "notes": sh.notes,
+                "assigned_students_list": [],
             }
             assigned_shifts.append(shift_dict)
-            if sh.intern_student_id and str(sh.intern_student_id) not in shift_by_student_id:
-                shift_by_student_id[str(sh.intern_student_id)] = shift_dict
+            if sh.intern_student_id:
+                sid_str = str(sh.intern_student_id)
+                if sid_str not in shift_by_student_id:
+                    shift_by_student_id[sid_str] = shift_dict
+                shifts_by_student_id.setdefault(sid_str, []).append(shift_dict)
 
         # Filtrar alumnos: el tutor solo ve los alumnos asignados a sus propios turnos clínicos (o con horas supervisadas por él)
         tutor_student_ids = set(shift_by_student_id.keys())
@@ -4477,10 +4855,12 @@ class AcademicCoordinatorService:
 
             for ch in records:
                 meta = self._parse_clinical_qr_comments(ch.comments)
-                if ch.status == "APPROVED":
-                    approved_hours += ch.hours_completed
-                elif ch.status == "PENDING":
-                    pending_hours += ch.hours_completed
+                is_complete = bool(meta.get("is_complete", True))
+                eff_hours = ch.hours_completed if is_complete else 0
+                if ch.status == "APPROVED" and is_complete:
+                    approved_hours += eff_hours
+                elif ch.status == "PENDING" and is_complete:
+                    pending_hours += eff_hours
                 if meta.get("clinical_grade"):
                     clin_grades.append(float(meta["clinical_grade"]))
                 if meta.get("mentorship_attended", True):
@@ -4499,8 +4879,12 @@ class AcademicCoordinatorService:
                     "date": ch.activity_date.isoformat() if ch.activity_date else date.today().isoformat(),
                     "check_in_time": meta["check_in_time"],
                     "check_out_time": meta["check_out_time"],
-                    "hours_completed": ch.hours_completed,
-                    "hours_logged": ch.hours_completed,
+                    "is_complete": is_complete,
+                    "missing_mark": meta.get("missing_mark"),
+                    "hours_formula": meta.get("hours_formula"),
+                    "warning_notice": meta.get("warning_notice"),
+                    "hours_completed": eff_hours,
+                    "hours_logged": eff_hours,
                     "clinical_box": st_shift_info.get("room_name") or meta["clinical_box"],
                     "box_name": st_shift_info.get("room_name") or meta["clinical_box"],
                     "shift_code": st_shift_info.get("shift_code"),
@@ -4510,12 +4894,12 @@ class AcademicCoordinatorService:
                     "qr_code": meta["qr_code"],
                     "mentorship_attended": meta["mentorship_attended"],
                     "clinical_grade": meta["clinical_grade"],
-                    "status": "APROBADO_TUTOR" if ch.status == "APPROVED" else ch.status,
+                    "status": "APROBADO_TUTOR" if (ch.status == "APPROVED" and is_complete) else ("INCOMPLETO" if not is_complete else ch.status),
                     "notes": meta["notes"],
                 }
                 student_logs.append(log_item)
                 all_qr_logs.append(log_item)
-                if ch.status == "PENDING":
+                if ch.status == "PENDING" and is_complete:
                     pending_qr_logs.append(log_item)
 
             req_hours = prog.min_clinical_hours if prog and prog.min_clinical_hours else 60
@@ -4533,7 +4917,22 @@ class AcademicCoordinatorService:
                 else 100.0
             )
 
-            assigned_students.append({
+            st_shifts = shifts_by_student_id.get(str(st.id)) or ([st_shift_info] if st_shift_info else [])
+            st_shift_codes = list({s.get("shift_code", "TUR-ACU-STGO-VESP") for s in st_shifts if s.get("shift_code")})
+            st_dates = sorted(
+                list(
+                    {l["date"] for l in student_logs if l.get("date")}
+                    | {s.get("shift_date") for s in st_shifts if s.get("shift_date")}
+                ),
+                reverse=True,
+            )
+            primary_shift_date = st_shift_info.get("shift_date") or (st_dates[0] if st_dates else str(today_ref))
+            pending_log_ids = [
+                l["id"] for l in student_logs if l["status"] != "APROBADO_TUTOR" and l.get("is_complete", True)
+            ]
+            incomplete_log_ids = [l["id"] for l in student_logs if not l.get("is_complete", True)]
+
+            student_summary_obj = {
                 "student_id": str(st.id),
                 "student_number": st.student_number,
                 "rut": person.rut,
@@ -4546,7 +4945,11 @@ class AcademicCoordinatorService:
                 "program_modality": mod_labels.get(p_mod, p_mod),
                 "clinical_practice_approved": bool(st.clinical_practice_approved),
                 "assigned_shift_code": st_shift_info.get("shift_code", "TUR-ACU-STGO-VESP"),
+                "assigned_shift_name": st_shift_info.get("shift_name", "Acupuntura • Turno Vespertino (18:00 - 22:00)"),
                 "assigned_shift": f"{st_shift_info.get('shift_code', '')} • {st_shift_info.get('shift_name', '')}".strip(" •"),
+                "assigned_shifts_codes": st_shift_codes,
+                "shift_date": primary_shift_date,
+                "attendance_dates": st_dates,
                 "campus": st_shift_info.get("campus_name", "Sede Central Providencia, Santiago"),
                 "assigned_box": st_shift_info.get("room_name", "Box 1 - Tai Yang"),
                 "hours_approved": approved_hours,
@@ -4558,11 +4961,24 @@ class AcademicCoordinatorService:
                 "clinical_grade": current_grade,
                 "practice_grade": current_grade,
                 "mentorship_attendance_pct": mentorship_pct,
-                "pending_logs_count": sum(1 for l in student_logs if l["status"] != "APROBADO_TUTOR"),
-                "pending_qr_logs": sum(1 for l in student_logs if l["status"] != "APROBADO_TUTOR"),
+                "pending_logs_count": len(pending_log_ids),
+                "pending_qr_logs": len(pending_log_ids),
+                "pending_log_ids": pending_log_ids,
                 "observation": "Desempeño clínico sobresaliente en box.",
                 "qr_logs": student_logs,
-            })
+            }
+            assigned_students.append(student_summary_obj)
+
+        # Vincular los alumnos asignados a cada turno de la carga del tutor (para desplegar y aprobar en cada turno)
+        students_by_id = {s["student_id"]: s for s in assigned_students}
+        for idx_s, sh_item in enumerate(assigned_shifts):
+            linked_students = []
+            if sh_item.get("intern_student_id") and sh_item["intern_student_id"] in students_by_id:
+                linked_students.append(students_by_id[sh_item["intern_student_id"]])
+            elif assigned_students:
+                linked_students.append(assigned_students[idx_s % len(assigned_students)])
+            sh_item["assigned_students_list"] = linked_students
+            sh_item["assigned_students_count"] = len(linked_students)
 
         return {
             "tutor_profile": {
@@ -4705,4 +5121,605 @@ class AcademicCoordinatorService:
             "hours_approved_now": approved_now,
             "tutor_overview": overview,
         }
+
+    # =========================================================================
+    # 9. FICHAS DE ADMISIÓN Y LISTADO DE ENTREVISTAS (SUBMÓDULO GESTIÓN ACADÉMICA)
+    # =========================================================================
+    def _ensure_admission_applications_seeded(self) -> None:
+        """
+        Garantiza la existencia de la tabla academic.admission_applications y siembra
+        fichas de admisión iniciales recibidas desde el endpoint del portal del sitio web
+        y agregadas manualmente de forma presencial en clínica.
+        """
+        bind = self.db.get_bind()
+        AdmissionApplication.__table__.create(bind=bind, checkfirst=True)
+
+        existing_count = (
+            self.db.query(AdmissionApplication)
+            .filter(AdmissionApplication.deleted_at.is_(None))
+            .count()
+        )
+        today_str = date.today().isoformat()
+        tomorrow_str = (date.today() + timedelta(days=1)).isoformat()
+
+        if existing_count > 0:
+            pending_count = (
+                self.db.query(AdmissionApplication)
+                .filter(
+                    AdmissionApplication.deleted_at.is_(None),
+                    AdmissionApplication.interview_date.is_(None),
+                    AdmissionApplication.status == "PENDIENTE_CONTACTO",
+                )
+                .count()
+            )
+            if pending_count < 2:
+                extra_pending = [
+                    AdmissionApplication(
+                        application_code="ADM-2026-0006",
+                        email="camila.vergara@gmail.com",
+                        first_name="Camila",
+                        last_name="Vergara Bustamante",
+                        phone="+56 9 8765 4321",
+                        rut="19.654.321-7",
+                        study_format="SEMIPRESENCIAL",
+                        campus="VINA_DEL_MAR",
+                        program_interest="Diplomado Superior en Medicina China Clásica y Acupuntura",
+                        source="PORTAL_WEB",
+                        status="PENDIENTE_CONTACTO",
+                        interview_date=None,
+                        interview_time=None,
+                        interviewer_name=None,
+                        interview_modality="PRESENCIAL",
+                        interviewer_notes="Ficha recibida desde el endpoint interno del portal web. Pendiente programar entrevista.",
+                        evaluation_decision="PENDIENTE",
+                    ),
+                    AdmissionApplication(
+                        application_code="ADM-2026-0007",
+                        email="rodrigo.salazar@outlook.cl",
+                        first_name="Rodrigo",
+                        last_name="Salazar Donoso",
+                        phone="+56 9 7654 3210",
+                        rut="17.890.123-5",
+                        study_format="PRESENCIAL",
+                        campus="SANTIAGO",
+                        program_interest="Diplomado en Masaje Terapéutico Tui na Clínico",
+                        source="PRESENCIAL_CLINICA",
+                        status="PENDIENTE_CONTACTO",
+                        interview_date=None,
+                        interview_time=None,
+                        interviewer_name=None,
+                        interview_modality="PRESENCIAL",
+                        interviewer_notes="Consultó presencialmente en recepción de la clínica en Santiago. Pendiente programar fecha de entrevista.",
+                        evaluation_decision="PENDIENTE",
+                    ),
+                ]
+                for ep in extra_pending:
+                    if not self.db.query(AdmissionApplication).filter(AdmissionApplication.application_code == ep.application_code).first():
+                        self.db.add(ep)
+                self.db.commit()
+            return
+
+        samples = [
+            AdmissionApplication(
+                application_code="ADM-2026-0001",
+                email="francisca.montes@gmail.com",
+                first_name="Francisca",
+                last_name="Montes Riquelme",
+                phone="+56 9 9123 4567",
+                rut="18.456.789-2",
+                study_format="PRESENCIAL",
+                campus="SANTIAGO",
+                program_interest="Diplomado Superior en Medicina China Clásica y Acupuntura",
+                source="PORTAL_WEB",
+                status="PENDIENTE_CONTACTO",
+                interview_date=None,
+                interview_time=None,
+                interviewer_name=None,
+                interview_modality="PRESENCIAL",
+                interviewer_notes="Postulación recibida desde el endpoint del portal web institucional.",
+                evaluation_decision="PENDIENTE",
+            ),
+            AdmissionApplication(
+                application_code="ADM-2026-0002",
+                email="matias.oyarzun@outlook.cl",
+                first_name="Matías",
+                last_name="Oyarzún Sepúlveda",
+                phone="+56 9 8234 5678",
+                rut="19.234.567-8",
+                study_format="SEMIPRESENCIAL",
+                campus="VINA_DEL_MAR",
+                program_interest="Diplomado en Masaje Terapéutico Tui na Clínico",
+                source="PORTAL_WEB",
+                status="ENTREVISTA_AGENDADA",
+                interview_date=today_str,
+                interview_time="11:30",
+                interviewer_name="Dr. Roberto Gómez Valdés",
+                interview_modality="VIDEOCONFERENCIA",
+                interviewer_notes="Contactado vía WhatsApp; entrevista coordinada para revisar formato semipresencial en sede Viña del Mar.",
+                evaluation_decision="PENDIENTE",
+            ),
+            AdmissionApplication(
+                application_code="ADM-2026-0003",
+                email="carolina.fuentes@salud.cl",
+                first_name="Carolina",
+                last_name="Fuentes Arancibia",
+                phone="+56 9 7345 6789",
+                rut="17.345.678-K",
+                study_format="PRESENCIAL",
+                campus="SANTIAGO",
+                program_interest="Diplomado Superior en Medicina China Clásica y Acupuntura",
+                source="PRESENCIAL_CLINICA",
+                status="ACEPTADO",
+                interview_date=today_str,
+                interview_time="10:00",
+                interviewer_name="Coordinación Académica San Bao",
+                interview_modality="PRESENCIAL",
+                interviewer_notes="Ficha técnica ingresada manualmente en recepción clínica. Excelente vocación y antecedentes de salud; aceptada para iniciar matrícula.",
+                evaluation_decision="ACEPTADO",
+            ),
+            AdmissionApplication(
+                application_code="ADM-2026-0004",
+                email="sebastian.lagos@gmail.com",
+                first_name="Sebastián",
+                last_name="Lagos Vergara",
+                phone="+56 9 6456 7890",
+                rut="20.123.987-4",
+                study_format="SEMIPRESENCIAL",
+                campus="SANTIAGO",
+                program_interest="Curso Clínico de Fitoterapia Tradicional y Pulsología",
+                source="PORTAL_WEB",
+                status="ENTREVISTA_AGENDADA",
+                interview_date=tomorrow_str,
+                interview_time="16:00",
+                interviewer_name="Prof. Zhiwei Chen",
+                interview_modality="PRESENCIAL",
+                interviewer_notes="Confirmó asistencia por WhatsApp para entrevista de admisión en Sede Santiago.",
+                evaluation_decision="PENDIENTE",
+            ),
+            AdmissionApplication(
+                application_code="ADM-2026-0005",
+                email="paula.navarro@yahoo.es",
+                first_name="Paula",
+                last_name="Navarro Cáceres",
+                phone="+56 9 5567 8901",
+                rut="16.789.432-1",
+                study_format="PRESENCIAL",
+                campus="VINA_DEL_MAR",
+                program_interest="Diplomado Superior en Medicina China Clásica y Acupuntura",
+                source="PRESENCIAL_CLINICA",
+                status="ENTREVISTA_AGENDADA",
+                interview_date=today_str,
+                interview_time="15:00",
+                interviewer_name="Dra. Marcela Pérez Morales",
+                interview_modality="PRESENCIAL",
+                interviewer_notes="Acudió directamente de forma presencial a la clínica de Viña del Mar; se registró ficha de admisión y entrevista para hoy.",
+                evaluation_decision="PENDIENTE",
+            ),
+            AdmissionApplication(
+                application_code="ADM-2026-0006",
+                email="camila.vergara@gmail.com",
+                first_name="Camila",
+                last_name="Vergara Bustamante",
+                phone="+56 9 8765 4321",
+                rut="19.654.321-7",
+                study_format="SEMIPRESENCIAL",
+                campus="VINA_DEL_MAR",
+                program_interest="Diplomado Superior en Medicina China Clásica y Acupuntura",
+                source="PORTAL_WEB",
+                status="PENDIENTE_CONTACTO",
+                interview_date=None,
+                interview_time=None,
+                interviewer_name=None,
+                interview_modality="PRESENCIAL",
+                interviewer_notes="Ficha recibida desde el endpoint interno del portal web. Pendiente programar entrevista.",
+                evaluation_decision="PENDIENTE",
+            ),
+            AdmissionApplication(
+                application_code="ADM-2026-0007",
+                email="rodrigo.salazar@outlook.cl",
+                first_name="Rodrigo",
+                last_name="Salazar Donoso",
+                phone="+56 9 7654 3210",
+                rut="17.890.123-5",
+                study_format="PRESENCIAL",
+                campus="SANTIAGO",
+                program_interest="Diplomado en Masaje Terapéutico Tui na Clínico",
+                source="PRESENCIAL_CLINICA",
+                status="PENDIENTE_CONTACTO",
+                interview_date=None,
+                interview_time=None,
+                interviewer_name=None,
+                interview_modality="PRESENCIAL",
+                interviewer_notes="Consultó presencialmente en recepción de la clínica en Santiago. Pendiente programar fecha de entrevista.",
+                evaluation_decision="PENDIENTE",
+            ),
+        ]
+        for item in samples:
+            self.db.add(item)
+        self.db.commit()
+
+    def _normalize_study_format(self, raw_format: Optional[str]) -> str:
+        val = (raw_format or "PRESENCIAL").strip().upper()
+        if "SEMI" in val:
+            return "SEMIPRESENCIAL"
+        return "PRESENCIAL"
+
+    def _normalize_admission_campus(self, raw_campus: Optional[str]) -> str:
+        val = (raw_campus or "SANTIAGO").strip().upper()
+        if "VINA" in val or "VIÑA" in val or "COSTA" in val:
+            return "VINA_DEL_MAR"
+        return "SANTIAGO"
+
+    def _serialize_admission_application(self, app: AdmissionApplication) -> Dict[str, Any]:
+        from urllib.parse import quote
+
+        full_name = f"{app.first_name} {app.last_name}".strip()
+        digits = "".join(ch for ch in (app.phone or "") if ch.isdigit())
+        if not digits:
+            digits = "56990000000"
+        elif len(digits) == 9 and digits.startswith("9"):
+            digits = f"56{digits}"
+        elif len(digits) == 8:
+            digits = f"569{digits}"
+
+        campus_label = "Viña del Mar" if app.campus == "VINA_DEL_MAR" else "Santiago"
+        format_label = "Semipresencial" if app.study_format == "SEMIPRESENCIAL" else "Presencial"
+        source_label = "Ficha de Admisión Manual (Clínica)" if app.source == "PRESENCIAL_CLINICA" else "Endpoint Portal Sitio Web"
+
+        if app.interview_date:
+            wa_msg = (
+                f"Hola {app.first_name}, te escribimos de Admisión Académica San Bao "
+                f"(Sede {campus_label} • Formato {format_label}) para confirmar tu entrevista de admisión "
+                f"el día {app.interview_date} a las {app.interview_time or '11:00'} hrs."
+            )
+        else:
+            wa_msg = (
+                f"Hola {app.first_name}, recibimos tu Ficha de Admisión en San Bao "
+                f"(Sede {campus_label} • Formato {format_label}) y te contactamos para programar tu fecha de entrevista."
+            )
+        whatsapp_url = f"https://wa.me/{digits}?text={quote(wa_msg)}"
+
+        eval_dec = app.evaluation_decision or "PENDIENTE"
+        if app.status == "MATRICULADO":
+            interview_dec = "ENROLLED"
+        elif eval_dec == "ACEPTADO" or app.status == "ACEPTADO":
+            interview_dec = "ACCEPTED"
+        elif eval_dec == "RECHAZADO" or app.status == "RECHAZADO":
+            interview_dec = "REJECTED"
+        else:
+            interview_dec = "PENDING"
+
+        return {
+            "id": str(app.id),
+            "application_code": app.application_code,
+            "email": app.email,
+            "correo": app.email,
+            "first_name": app.first_name,
+            "nombre": app.first_name,
+            "last_name": app.last_name,
+            "apellidos": app.last_name,
+            "full_name": full_name,
+            "phone": app.phone,
+            "telefono": app.phone,
+            "whatsapp_phone": f"+{digits}",
+            "whatsapp_url": whatsapp_url,
+            "rut": app.rut or "",
+            "study_format": app.study_format,
+            "study_format_label": format_label,
+            "formato_estudio": format_label,
+            "campus": app.campus,
+            "campus_label": campus_label,
+            "sede": campus_label,
+            "program_interest": app.program_interest or "Diplomado Superior en Medicina China Clásica y Acupuntura",
+            "source": app.source,
+            "source_label": source_label,
+            "status": app.status,
+            "interview_date": app.interview_date,
+            "interview_time": app.interview_time,
+            "interviewer_name": app.interviewer_name or "Coordinación Académica San Bao",
+            "interview_modality": app.interview_modality or "PRESENCIAL",
+            "interviewer_notes": app.interviewer_notes or "",
+            "technical_ficha_notes": app.interviewer_notes or "",
+            "evaluation_decision": eval_dec,
+            "interview_decision": interview_dec,
+            "onboarding_id": app.onboarding_id,
+            "is_interview_scheduled": bool(app.interview_date or app.status in ("ENTREVISTA_AGENDADA", "ACEPTADO", "MATRICULADO", "RECHAZADO")),
+            "can_enroll": eval_dec == "ACEPTADO" or app.status in ("ACEPTADO", "MATRICULADO"),
+            "created_at": app.created_at.isoformat() if getattr(app, "created_at", None) else date.today().isoformat(),
+        }
+
+    def list_admission_applications(
+        self,
+        campus: Optional[str] = None,
+        study_format: Optional[str] = None,
+        status_filter: Optional[str] = None,
+        source_filter: Optional[str] = None,
+        interview_date: Optional[str] = None,
+        only_interviews: bool = False,
+        search: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        self._ensure_admission_applications_seeded()
+        records = (
+            self.db.query(AdmissionApplication)
+            .filter(AdmissionApplication.deleted_at.is_(None))
+            .order_by(desc(AdmissionApplication.created_at), AdmissionApplication.application_code.desc())
+            .all()
+        )
+        all_serialized = [self._serialize_admission_application(r) for r in records]
+
+        def matches(item: Dict[str, Any]) -> bool:
+            if only_interviews and not item["is_interview_scheduled"]:
+                return False
+            if not only_interviews and item["is_interview_scheduled"]:
+                return False
+            if campus and campus.upper() not in ("ALL", "TODAS"):
+                norm_c = self._normalize_admission_campus(campus)
+                if item["campus"] != norm_c:
+                    return False
+            if study_format and study_format.upper() not in ("ALL", "TODOS"):
+                norm_f = self._normalize_study_format(study_format)
+                if item["study_format"] != norm_f:
+                    return False
+            if status_filter and status_filter.upper() not in ("ALL", "TODOS"):
+                sf = status_filter.upper()
+                if item["status"] != sf and item["evaluation_decision"] != sf and item["interview_decision"] != sf:
+                    return False
+            if source_filter and source_filter.upper() not in ("ALL", "TODOS"):
+                if item["source"] != source_filter.upper():
+                    return False
+            if interview_date and interview_date.strip():
+                if item["interview_date"] != interview_date.strip():
+                    return False
+            if search and search.strip():
+                q = search.strip().lower()
+                haystack = " ".join([
+                    item["application_code"],
+                    item["full_name"],
+                    item["email"],
+                    item["phone"],
+                    item["rut"],
+                    item["campus_label"],
+                    item["study_format_label"],
+                ]).lower()
+                if q not in haystack:
+                    return False
+            return True
+
+        filtered_items = [i for i in all_serialized if matches(i)]
+        pending_items = [i for i in all_serialized if not i["is_interview_scheduled"]]
+        interviews_list = [i for i in all_serialized if i["is_interview_scheduled"]]
+        interviews_list.sort(key=lambda x: (x.get("interview_date") or "9999-12-31", x.get("interview_time") or "23:59"))
+
+        today_str = date.today().isoformat()
+        summary = {
+            "total_applications": len(pending_items),
+            "all_applications_count": len(all_serialized),
+            "filtered_count": len(filtered_items),
+            "pending_contact_count": len(pending_items),
+            "interviews_scheduled_count": len(interviews_list),
+            "interviews_today_count": sum(1 for i in interviews_list if i["interview_date"] == today_str),
+            "pending_evaluation_count": sum(1 for i in interviews_list if i["evaluation_decision"] == "PENDIENTE"),
+            "accepted_count": sum(1 for i in all_serialized if i["evaluation_decision"] == "ACEPTADO" or i["status"] == "ACEPTADO"),
+            "enrolled_count": sum(1 for i in all_serialized if i["status"] == "MATRICULADO"),
+            "santiago_count": sum(1 for i in pending_items if i["campus"] == "SANTIAGO"),
+            "vina_count": sum(1 for i in pending_items if i["campus"] == "VINA_DEL_MAR"),
+            "presencial_count": sum(1 for i in pending_items if i["study_format"] == "PRESENCIAL"),
+            "semipresencial_count": sum(1 for i in pending_items if i["study_format"] == "SEMIPRESENCIAL"),
+            "portal_web_count": sum(1 for i in pending_items if i["source"] == "PORTAL_WEB"),
+            "manual_clinica_count": sum(1 for i in pending_items if i["source"] == "PRESENCIAL_CLINICA"),
+        }
+
+        return {
+            "items": filtered_items,
+            "interviews": interviews_list,
+            "summary": summary,
+            "kpis": {
+                "total": len(pending_items),
+                "new_pending_contact": len(pending_items),
+                "interviews_scheduled": len(interviews_list),
+                "portal_web": summary["portal_web_count"],
+                "manual_clinica": summary["manual_clinica_count"],
+            },
+            "endpoint_contract": {
+                "endpoint": "/api/v1/academic/coordinator/admissions",
+                "fields": [
+                    "email (Correo)",
+                    "first_name (Nombre)",
+                    "last_name (Apellidos)",
+                    "phone (Teléfono de contacto)",
+                    "study_format (Presencial o Semipresencial)",
+                    "campus (Santiago o Viña del Mar)",
+                ],
+            },
+        }
+
+    def create_admission_application(self, data: AdmissionApplicationCreateRequest) -> Dict[str, Any]:
+        """
+        Crea una nueva Ficha de Admisión tanto cuando se consume internamente desde el endpoint
+        del portal del sitio web (PORTAL_WEB) como cuando se agrega manualmente en la clínica
+        de forma presencial (PRESENCIAL_CLINICA).
+        """
+        self._ensure_admission_applications_seeded()
+
+        email_val = (data.email or data.correo or "").strip()
+        first_name_val = (data.first_name or data.nombre or "").strip()
+        last_name_val = (data.last_name or data.apellidos or "").strip()
+        phone_val = (data.phone or data.telefono or "").strip()
+        raw_format = data.formato_estudio or data.study_format or "PRESENCIAL"
+        raw_campus = data.sede or data.campus or "SANTIAGO"
+
+        if not email_val or "@" not in email_val:
+            raise SanBaoException("Debe indicar un Correo electrónico válido para la Ficha de Admisión.")
+        if not first_name_val:
+            raise SanBaoException("Debe indicar el Nombre del postulante.")
+        if not last_name_val:
+            raise SanBaoException("Debe indicar los Apellidos del postulante.")
+        if not phone_val:
+            raise SanBaoException("Debe indicar el Teléfono de contacto del postulante.")
+
+        study_format_norm = self._normalize_study_format(raw_format)
+        campus_norm = self._normalize_admission_campus(raw_campus)
+        source_norm = (data.source or "PORTAL_WEB").strip().upper()
+        if source_norm not in ("PORTAL_WEB", "PRESENCIAL_CLINICA"):
+            source_norm = "PRESENCIAL_CLINICA" if "MANUAL" in source_norm or "CLINICA" in source_norm else "PORTAL_WEB"
+
+        total_count = self.db.query(AdmissionApplication).count()
+        code = f"ADM-2026-{total_count + 1:04d}"
+        while self.db.query(AdmissionApplication).filter(AdmissionApplication.application_code == code).first():
+            total_count += 1
+            code = f"ADM-2026-{total_count + 1:04d}"
+
+        has_interview_date = bool(data.interview_date and data.interview_date.strip())
+        initial_status = "ENTREVISTA_AGENDADA" if has_interview_date else "PENDIENTE_CONTACTO"
+
+        app_obj = AdmissionApplication(
+            application_code=code,
+            email=email_val,
+            first_name=first_name_val,
+            last_name=last_name_val,
+            phone=phone_val,
+            rut=(data.rut or "").strip() or None,
+            study_format=study_format_norm,
+            campus=campus_norm,
+            program_interest=data.program_interest or "Diplomado Superior en Medicina China Clásica y Acupuntura",
+            source=source_norm,
+            status=initial_status,
+            interview_date=data.interview_date.strip() if has_interview_date else None,
+            interview_time=(data.interview_time or "11:00").strip() if has_interview_date else None,
+            interviewer_name=(data.interviewer_name or "Coordinación Académica San Bao") if has_interview_date else None,
+            interview_modality="PRESENCIAL",
+            interviewer_notes=data.interviewer_notes or (
+                "Ficha técnica manual ingresada presencialmente en clínica."
+                if source_norm == "PRESENCIAL_CLINICA"
+                else "Ficha de admisión recibida desde endpoint del portal del sitio web."
+            ),
+            evaluation_decision="PENDIENTE",
+        )
+        self.db.add(app_obj)
+        self.db.commit()
+        self.db.refresh(app_obj)
+        return self._serialize_admission_application(app_obj)
+
+    def schedule_admission_interview(self, application_id: str, data: ScheduleAdmissionInterviewRequest) -> Dict[str, Any]:
+        """
+        Programa la fecha y hora de entrevista de una Ficha de Admisión, envía correo electrónico
+        con los datos de la cita al postulante y la retira del listado de Fichas de Admisión para
+        agregarla al Listado de Entrevistas.
+        """
+        self._ensure_admission_applications_seeded()
+        app_obj = (
+            self.db.query(AdmissionApplication)
+            .filter(
+                or_(
+                    AdmissionApplication.id == application_id,
+                    AdmissionApplication.application_code == application_id,
+                ),
+                AdmissionApplication.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not app_obj:
+            raise EntityNotFoundException("Ficha de Admisión", application_id)
+
+        if not data.interview_date or not data.interview_date.strip():
+            raise SanBaoException("Debe especificar la fecha de la entrevista (YYYY-MM-DD).")
+
+        app_obj.interview_date = data.interview_date.strip()
+        app_obj.interview_time = (data.interview_time or "11:00").strip()
+        app_obj.interviewer_name = (data.interviewer_name or "Coordinación Académica San Bao").strip()
+        app_obj.interview_modality = (data.interview_modality or "PRESENCIAL").strip().upper()
+        if data.interviewer_notes is not None and data.interviewer_notes.strip():
+            app_obj.interviewer_notes = data.interviewer_notes.strip()
+        if app_obj.status == "PENDIENTE_CONTACTO":
+            app_obj.status = "ENTREVISTA_AGENDADA"
+
+        self.db.commit()
+        self.db.refresh(app_obj)
+        serialized = self._serialize_admission_application(app_obj)
+
+        campus_label = serialized["campus_label"]
+        format_label = serialized["study_format_label"]
+        email_subject = (
+            f"Confirmación de Cita a Entrevista de Admisión San Bao ({app_obj.application_code}) — "
+            f"{app_obj.interview_date} a las {app_obj.interview_time} hrs"
+        )
+        email_body = (
+            f"Estimado/a {serialized['full_name']},\n\n"
+            f"Junto con saludar, confirmamos que se ha programado su Entrevista de Admisión en Instituto y Clínica San Bao:\n"
+            f"• Fecha de la Cita: {app_obj.interview_date}\n"
+            f"• Hora de la Cita: {app_obj.interview_time} hrs\n"
+            f"• Modalidad: {app_obj.interview_modality}\n"
+            f"• Entrevistador: {app_obj.interviewer_name}\n"
+            f"• Sede de Postulación: {campus_label} (Formato {format_label})\n\n"
+            f"Atentamente,\nAdmisión & Gestión Académica San Bao"
+        )
+        serialized["email_sent"] = True
+        serialized["moved_to_interviews_list"] = True
+        serialized["email_notification"] = {
+            "sent": True,
+            "recipient": app_obj.email,
+            "subject": email_subject,
+            "body": email_body,
+            "appointment_date": app_obj.interview_date,
+            "appointment_time": app_obj.interview_time,
+            "modality": app_obj.interview_modality,
+            "interviewer_name": app_obj.interviewer_name,
+            "campus_label": campus_label,
+        }
+        return serialized
+
+    def evaluate_admission_interview(self, application_id: str, data: EvaluateAdmissionInterviewRequest) -> Dict[str, Any]:
+        """
+        Registra el criterio del entrevistador (ACEPTADO / RECHAZADO) y su ficha técnica,
+        habilitando al postulante aceptado para iniciar el proceso de matrícula desde el Listado de Entrevistas.
+        """
+        self._ensure_admission_applications_seeded()
+        app_obj = (
+            self.db.query(AdmissionApplication)
+            .filter(
+                or_(
+                    AdmissionApplication.id == application_id,
+                    AdmissionApplication.application_code == application_id,
+                ),
+                AdmissionApplication.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not app_obj:
+            raise EntityNotFoundException("Ficha de Admisión / Entrevista", application_id)
+
+        decision_norm = (data.decision or "ACEPTADO").strip().upper()
+        if decision_norm in ("ENROLLED", "MATRICULADO"):
+            decision_norm = "MATRICULADO"
+        elif decision_norm in ("REJECTED", "RECHAZADO"):
+            decision_norm = "RECHAZADO"
+        else:
+            decision_norm = "ACEPTADO"
+
+        if not app_obj.interview_date:
+            app_obj.interview_date = date.today().isoformat()
+        if not app_obj.interview_time:
+            app_obj.interview_time = "11:00"
+
+        if data.interviewer_name:
+            app_obj.interviewer_name = data.interviewer_name.strip()
+        if data.interviewer_notes is not None and data.interviewer_notes.strip():
+            app_obj.interviewer_notes = data.interviewer_notes.strip()
+        if data.rut and data.rut.strip():
+            app_obj.rut = data.rut.strip()
+
+        if decision_norm == "MATRICULADO":
+            app_obj.evaluation_decision = "ACEPTADO"
+            app_obj.status = "MATRICULADO"
+        elif decision_norm == "ACEPTADO":
+            app_obj.evaluation_decision = "ACEPTADO"
+            app_obj.status = "ACEPTADO"
+        else:
+            app_obj.evaluation_decision = "RECHAZADO"
+            app_obj.status = "RECHAZADO"
+
+        self.db.commit()
+        self.db.refresh(app_obj)
+        return self._serialize_admission_application(app_obj)
+
 

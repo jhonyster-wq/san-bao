@@ -7,6 +7,7 @@ from app.modules.academic.models.student import (
     StudentCourseTransfer,
     AcademicDocument,
     StudentOnboarding,
+    AdmissionApplication,
 )
 from app.modules.academic.models.evaluation import Evaluation, Grade, Attendance, ClinicalPracticeHour
 from app.modules.academic.models.content import CourseClassContent
@@ -24,6 +25,7 @@ __all__ = [
     "StudentCourseTransfer",
     "AcademicDocument",
     "StudentOnboarding",
+    "AdmissionApplication",
     "Evaluation",
     "Grade",
     "Attendance",

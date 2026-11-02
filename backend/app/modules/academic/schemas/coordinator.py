@@ -157,4 +157,42 @@ class TutorRecordEvaluationRequest(BaseModel):
     observation: Optional[str] = Field(None, description="Alias de feedback")
 
 
+class AdmissionApplicationCreateRequest(BaseModel):
+    email: Optional[str] = Field(None, description="Correo electrónico del postulante")
+    correo: Optional[str] = Field(None, description="Alias de email (Correo)")
+    first_name: Optional[str] = Field(None, description="Nombre del postulante")
+    nombre: Optional[str] = Field(None, description="Alias de first_name (Nombre)")
+    last_name: Optional[str] = Field(None, description="Apellidos del postulante")
+    apellidos: Optional[str] = Field(None, description="Alias de last_name (Apellidos)")
+    phone: Optional[str] = Field(None, description="Teléfono de contacto (WhatsApp)")
+    telefono: Optional[str] = Field(None, description="Alias de phone (Teléfono de contacto)")
+    study_format: Optional[str] = Field("PRESENCIAL", description="Formato de estudio: Presencial o Semipresencial")
+    formato_estudio: Optional[str] = Field(None, description="Alias de study_format (Presencial o Semipresencial)")
+    campus: Optional[str] = Field("SANTIAGO", description="Sede a la que desea postular: Santiago o Viña del Mar")
+    sede: Optional[str] = Field(None, description="Alias de campus (Santiago o Viña del Mar)")
+    rut: Optional[str] = Field(None, description="RUT opcional del postulante")
+    program_interest: Optional[str] = Field("Diplomado Superior en Medicina China Clásica y Acupuntura", description="Programa de interés")
+    source: Optional[str] = Field("PORTAL_WEB", description="Origen: PORTAL_WEB o PRESENCIAL_CLINICA")
+    interview_date: Optional[str] = Field(None, description="Fecha de entrevista YYYY-MM-DD (si se agenda de inmediato)")
+    interview_time: Optional[str] = Field(None, description="Hora de entrevista HH:MM")
+    interviewer_name: Optional[str] = Field(None, description="Nombre del entrevistador")
+    interviewer_notes: Optional[str] = Field(None, description="Ficha técnica / observaciones manuales")
+
+
+class ScheduleAdmissionInterviewRequest(BaseModel):
+    interview_date: str = Field(..., description="Fecha de entrevista YYYY-MM-DD")
+    interview_time: Optional[str] = Field("11:00", description="Hora de entrevista HH:MM")
+    interviewer_name: Optional[str] = Field("Coordinación Académica San Bao", description="Entrevistador asignado")
+    interview_modality: Optional[str] = Field("PRESENCIAL", description="PRESENCIAL o VIDEOCONFERENCIA")
+    interviewer_notes: Optional[str] = Field(None, description="Observaciones o notas previas de coordinación")
+
+
+class EvaluateAdmissionInterviewRequest(BaseModel):
+    decision: str = Field("ACEPTADO", description="Criterio del entrevistador: ACEPTADO o RECHAZADO")
+    interviewer_name: Optional[str] = Field(None, description="Nombre del entrevistador que evalúa")
+    interviewer_notes: Optional[str] = Field(None, description="Ficha técnica y comentarios de la entrevista")
+    rut: Optional[str] = Field(None, description="RUT confirmado en la entrevista para iniciar matrícula")
+
+
+
 

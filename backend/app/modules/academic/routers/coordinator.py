@@ -25,6 +25,9 @@ from app.modules.academic.schemas.coordinator import (
     StudentPayInstallmentRequest,
     TutorApproveAttendanceRequest,
     TutorRecordEvaluationRequest,
+    AdmissionApplicationCreateRequest,
+    ScheduleAdmissionInterviewRequest,
+    EvaluateAdmissionInterviewRequest,
 )
 from app.shared.responses import APIResponse
 
@@ -476,7 +479,7 @@ def send_secretariat_course_email(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/clinical-qr-attendance", response_model=APIResponse[Dict[str, Any]], summary="Portal del Alumno: Registrar lectura QR de práctica clínica bajo normativa MINSAL (fecha, hora entrada y hora salida)")
+@router.post("/clinical-qr-attendance", response_model=APIResponse[Dict[str, Any]], summary="Portal del Alumno: Registrar Entrada y Salida en el Registro de Horas de Práctica Clínica")
 def record_clinical_qr_attendance(
     payload: ClinicalQRAttendanceRequest,
     db: Session = Depends(get_db),
@@ -484,12 +487,20 @@ def record_clinical_qr_attendance(
     service = AcademicCoordinatorService(db)
     try:
         res = service.record_clinical_qr_attendance(payload)
+        if not res.get("is_complete", True):
+            msg = (
+                f"Registro guardado ({res['qr_code']}) en fecha {res['activity_date']}: "
+                f"{res.get('warning_notice') or 'Falta completar marca de Entrada/Salida en el mismo día (0 hrs).'}"
+            )
+        else:
+            formula_txt = res.get("hours_formula") or f"{res['hours_completed']} hrs"
+            msg = (
+                f"Registro de Horas de Práctica Clínica ({res['qr_code']}) completado en fecha {res['activity_date']}: "
+                f"Entrada {res['check_in_time']} • Salida {res['check_out_time']} → "
+                f"{formula_txt} (Listo para aprobación del Tutor)."
+            )
         return APIResponse(
-            message=(
-                f"Registro QR MINSAL ({res['qr_code']}) guardado exitosamente: "
-                f"Fecha {res['activity_date']} • Entrada {res['check_in_time']} • Salida {res['check_out_time']} "
-                f"({res['hours_completed']} hrs clínicas)."
-            ),
+            message=msg,
             data=res,
         )
     except (EntityNotFoundException, SanBaoException) as e:
@@ -586,5 +597,120 @@ def tutor_record_clinical_evaluation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# =============================================================================
+# 9. FICHAS DE ADMISIÓN Y LISTADO DE ENTREVISTAS (SUBMÓDULO GESTIÓN ACADÉMICA)
+# =============================================================================
+@router.get("/admissions", response_model=APIResponse[Dict[str, Any]], summary="Gestión Académica: Listado de Fichas de Admisión y Entrevistas")
+def list_admission_applications(
+    campus: Optional[str] = Query(None, description="Filtrar por sede: SANTIAGO o VINA_DEL_MAR"),
+    study_format: Optional[str] = Query(None, description="Filtrar por formato de estudio: PRESENCIAL o SEMIPRESENCIAL"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filtrar por estado"),
+    source: Optional[str] = Query(None, description="Filtrar por origen: PORTAL_WEB o PRESENCIAL_CLINICA"),
+    interview_date: Optional[str] = Query(None, description="Filtrar por fecha de entrevista YYYY-MM-DD"),
+    only_interviews: bool = Query(False, description="True para retornar solo las fichas con entrevista coordinada"),
+    search: Optional[str] = Query(None, description="Buscar por nombre, correo, teléfono o código"),
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    data = service.list_admission_applications(
+        campus=campus,
+        study_format=study_format,
+        status_filter=status_filter,
+        source_filter=source,
+        interview_date=interview_date,
+        only_interviews=only_interviews,
+        search=search,
+    )
+    return APIResponse(data=data)
+
+
+@router.post("/admissions", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="Endpoint de Ficha de Admisión consumido desde el portal del sitio web o ingreso manual presencial en clínica")
+@router.post("/admissions/intake", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="Endpoint interno de recepción de Fichas de Admisión desde el portal del sitio web")
+def create_admission_application(
+    payload: AdmissionApplicationCreateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.create_admission_application(payload)
+        return APIResponse(
+            message=(
+                f"Ficha de Admisión {res['application_code']} registrada para {res['full_name']} "
+                f"(Formato: {res['study_format_label']} • Sede: {res['campus_label']})."
+            ),
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.put("/admissions/{application_id}/schedule-interview", response_model=APIResponse[Dict[str, Any]], summary="Programar entrevista de admisión, enviar correo con la cita y pasar al Listado de Entrevistas")
+def schedule_admission_interview(
+    application_id: str,
+    payload: ScheduleAdmissionInterviewRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.schedule_admission_interview(application_id, payload)
+        return APIResponse(
+            message=(
+                f"Entrevista programada para {res['full_name']} el día "
+                f"{res['interview_date']} a las {res['interview_time']} hrs ({res['campus_label']}). "
+                f"Se envió correo electrónico con la cita a {res['email']} y la ficha pasó al Listado de Entrevistas."
+            ),
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.put("/admissions/{application_id}/evaluate-interview", response_model=APIResponse[Dict[str, Any]], summary="Evaluar entrevista de admisión (Aceptar / Rechazar) y habilitar inicio de matrícula")
+def evaluate_admission_interview(
+    application_id: str,
+    payload: EvaluateAdmissionInterviewRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.evaluate_admission_interview(application_id, payload)
+        return APIResponse(
+            message=(
+                f"Entrevista de {res['full_name']} evaluada con decisión: {res['evaluation_decision']}."
+            ),
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/interviews", response_model=APIResponse[Dict[str, Any]], summary="Gestión Académica: Listado de Entrevistas para organizar el trabajo diario e iniciar matrícula")
+def list_scheduled_interviews(
+    interview_date: Optional[str] = Query(None, description="Fecha de entrevista YYYY-MM-DD"),
+    campus: Optional[str] = Query(None, description="Sede: SANTIAGO o VINA_DEL_MAR"),
+    study_format: Optional[str] = Query(None, description="Formato: PRESENCIAL o SEMIPRESENCIAL"),
+    decision: Optional[str] = Query(None, description="Estado decisión: PENDIENTE, ACEPTADO, RECHAZADO, MATRICULADO"),
+    search: Optional[str] = Query(None, description="Búsqueda por postulante"),
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    data = service.list_admission_applications(
+        campus=campus,
+        study_format=study_format,
+        status_filter=decision,
+        interview_date=interview_date,
+        only_interviews=True,
+        search=search,
+    )
+    return APIResponse(data=data)
+
 
 

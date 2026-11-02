@@ -365,9 +365,241 @@ def test_coordinator_matriculas_panel_filters_and_summary(client: TestClient, db
         "coord-subtab-clinical",
         "coord-subtab-documents",
         "coord-subtab-matriculas",
+        "coord-subtab-admissions",
+        "coord-subtab-interviews",
     ):
         assert pane_id in checker.parents_by_id
         assert checker.parents_by_id[pane_id][-1] == "tab-academic-coordinator"
+
+    # 7. Verificar que el Portal del Alumno (#tab-student) esté organizado en 3 paneles independientes sin despliegues largos
+    assert 'id="student-subtabs-nav"' in html_text
+    assert 'id="student-subtab-courses"' in html_text
+    assert 'id="student-subtab-finance"' in html_text
+    assert 'id="student-subtab-qr-minsal"' in html_text
+    assert "switchStudentPortalSubtab" in html_text
+    assert ".student-subtab-pane.hidden" in html_text
+
+    # 8. Verificar que el Portal de Tutores (#tab-tutor-portal) no tenga separación financiera en el encabezado,
+    # esté organizado en 3 paneles independientes, muestre los turnos por mes con botón para desplegar y aprobar alumnos por turno,
+    # e incorpore filtros de Turno y Fecha en el listado de alumnos asignados por Dirección Clínica
+    assert "Separación Financiera &amp; RRHH — Docentes de Aula" not in html_text
+    assert 'id="tutor-subtabs-nav"' in html_text
+    assert "<span>1. Mis Turnos Asignados</span>" in html_text
+    assert "1. Mis Turnos Asignados (Vista Mensual)" not in html_text
+    assert 'id="tutor-subtab-shifts"' in html_text
+    assert 'id="tutor-shifts-filter-type"' in html_text
+    assert 'id="tutor-session-identity-card"' in html_text
+    assert "setTutorShiftsTypeFilter" in html_text
+    assert "✓ Aprobar Asistencia en Turno" not in html_text
+    assert 'id="tutor-calendar-days-grid"' in html_text
+    assert 'id="tutor-calendar-shift-students-drawer"' in html_text
+    assert "renderTutorMonthlyCalendar" in html_text
+    assert 'id="tutor-subtab-students"' in html_text
+    assert 'id="tutor-subtab-qr-logs"' in html_text
+    assert ".tutor-subtab-pane.hidden" in html_text
+    assert 'id="tutor-shifts-month-picker"' in html_text
+    assert "toggleTutorShiftStudentsRow" in html_text
+    assert "approveTutorShiftStudentAttendance" in html_text
+    assert 'id="tutor-students-filter-shift"' in html_text
+    assert 'id="tutor-students-filter-date"' in html_text
+
+    res_tutor = client.get("/api/v1/academic/coordinator/tutor-portal/overview?tutor_id=12.876.543-1")
+    assert res_tutor.status_code == 200
+    tutor_data = res_tutor.json()["data"]
+    assert 1 <= len(tutor_data["assigned_shifts"]) <= 3
+    shift_periods = [s["shift_period"] for s in tutor_data["assigned_shifts"]]
+    assert len(shift_periods) == len(set(shift_periods))
+    assert set(shift_periods).issubset({"AM", "PM", "VESPERTINO"})
+    first_shift = tutor_data["assigned_shifts"][0]
+    assert "(" not in first_shift["shift_name"]
+    assert "shift_period_label" in first_shift
+    assert "shift_month" in first_shift
+    assert "assigned_students_list" in first_shift
+    assert len(first_shift["assigned_students_list"]) >= 1
+    assert len(tutor_data["assigned_students"]) >= 1
+    assert "shift_date" in tutor_data["assigned_students"][0]
+    assert "assigned_shift_code" in tutor_data["assigned_students"][0]
+
+    # 9. Verificar "Registro de Horas de Práctica Clínica":
+    # - Cambio de nombre en Portal de Alumnos
+    # - Habilitado solo si tiene asignación de turno
+    # - Obligatoriedad de marcar Entrada y Salida en el mismo día (resta Salida - Entrada) y aviso si falta una marca
+    assert "3. Registro de Horas de Práctica Clínica" in html_text
+    assert 'id="st-shift-assignment-banner"' in html_text
+    assert 'id="btn-st-qr-checkin"' in html_text
+    assert 'id="btn-st-qr-checkout"' in html_text
+
+    # Alumno con turno asignado (Diego Valenzuela 19.876.543-0) vs alumno congelado sin turno (Ignacio Morales 17.654.321-9)
+    res_st_active = client.get("/api/v1/academic/coordinator/student-portal/profile?student_id_or_rut=19.876.543-0")
+    assert res_st_active.status_code == 200
+    assert res_st_active.json()["data"]["has_assigned_shift"] is True
+
+    res_st_no_shift = client.get("/api/v1/academic/coordinator/student-portal/profile?student_id_or_rut=17.654.321-9")
+    assert res_st_no_shift.status_code == 200
+    assert res_st_no_shift.json()["data"]["has_assigned_shift"] is False
+
+    # Intento de marcaje sin turno asignado debe rechazarse
+    res_blocked = client.post(
+        "/api/v1/academic/coordinator/clinical-qr-attendance",
+        json={"student_id_or_rut": "17.654.321-9", "action": "ENTRADA", "activity_date": "2026-11-15"},
+    )
+    assert res_blocked.status_code == 400
+
+    # Marcaje solo de ENTRADA en el día deja registro incompleto (0 hrs) y aviso de falta de SALIDA
+    res_in_only = client.post(
+        "/api/v1/academic/coordinator/clinical-qr-attendance",
+        json={
+            "student_id_or_rut": "19.876.543-0",
+            "action": "ENTRADA",
+            "activity_date": "2026-11-18",
+            "check_in_time": "09:00:00",
+        },
+    )
+    assert res_in_only.status_code == 200
+    d_in = res_in_only.json()["data"]
+    assert d_in["is_complete"] is False
+    assert d_in["missing_mark"] == "SALIDA"
+    assert d_in["hours_completed"] == 0
+    assert d_in["warning_notice"] is not None
+
+    # Al marcar SALIDA en el mismo día (14:00:00), calcula la resta exacta (14:00 - 09:00 = 5 hrs) y completa el registro
+    res_out_same_day = client.post(
+        "/api/v1/academic/coordinator/clinical-qr-attendance",
+        json={
+            "student_id_or_rut": "19.876.543-0",
+            "action": "SALIDA",
+            "activity_date": "2026-11-18",
+            "check_out_time": "14:00:00",
+        },
+    )
+    assert res_out_same_day.status_code == 200
+    d_out = res_out_same_day.json()["data"]
+    assert d_out["is_complete"] is True
+    assert d_out["missing_mark"] is None
+    assert d_out["hours_completed"] == 5
+    assert "14:00 − 09:00 = 5 hrs" in d_out["hours_formula"]
+
+    # 10. Verificar paneles "8. Fichas de Admisión" (#coord-subtab-admissions) y "9. Listado de Entrevistas" (#coord-subtab-interviews):
+    # - Endpoint interno del portal del sitio (POST /api/v1/academic/coordinator/admissions/intake) con Correo, Nombre, Apellidos, Teléfono, Formato (Presencial/Semipresencial) y Sede (Santiago/Viña del Mar)
+    # - Cambio de nombre "+ Agregar Ficha de Admisión" y "📅 Programar Entrevista"
+    # - Sin botones de Aceptar ni Matricular en Fichas de Admisión
+    # - Al confirmar la fecha en Programar Entrevista: envía correo con la cita, sale del listado de Fichas de Admisión y se agrega al Listado de Entrevistas
+    assert 'id="coord-subtab-btn-admissions"' in html_text
+    assert 'id="coord-subtab-btn-interviews"' in html_text
+    assert 'id="coord-subtab-admissions"' in html_text
+    assert 'id="coord-subtab-interviews"' in html_text
+    assert 'id="coord-manual-ficha-panel"' in html_text
+    assert "+ Agregar Ficha de Admisión" in html_text
+    assert "Agregar Ficha Técnica Manual (Presencial Clínica)" not in html_text
+    assert "📅 Programar Entrevista" in html_text
+    assert "Reprogramar Entrevista" not in html_text
+    assert 'id="coord-sched-email-preview"' in html_text
+    assert "submitManualAdmissionFicha" in html_text
+    assert "simulatePortalWebAdmissionIntake" in html_text
+    assert "openScheduleAdmissionInterviewBox" in html_text
+    assert "evaluateAdmissionInterviewDecision" in html_text
+    assert "initiateEnrollmentFromAdmission" in html_text
+
+    # Recepción desde endpoint interno del portal web (alias en español)
+    res_portal_intake = client.post(
+        "/api/v1/academic/coordinator/admissions/intake",
+        json={
+            "correo": "francisca.portal@sanbao.cl",
+            "nombre": "Francisca",
+            "apellidos": "Araya Soto",
+            "telefono": "+56 9 8111 2233",
+            "formato_estudio": "Semipresencial",
+            "sede": "Viña del Mar",
+        },
+    )
+    assert res_portal_intake.status_code in (200, 201)
+    ficha_portal = res_portal_intake.json()["data"]
+    assert ficha_portal["email"] == "francisca.portal@sanbao.cl"
+    assert ficha_portal["first_name"] == "Francisca"
+    assert ficha_portal["last_name"] == "Araya Soto"
+    assert ficha_portal["study_format"] == "SEMIPRESENCIAL"
+    assert ficha_portal["study_format_label"] == "Semipresencial"
+    assert ficha_portal["campus"] == "VINA_DEL_MAR"
+    assert ficha_portal["campus_label"] == "Viña del Mar"
+    assert ficha_portal["source"] == "PORTAL_WEB"
+    assert "https://wa.me/56981112233" in ficha_portal["whatsapp_url"]
+
+    # Antes de programar entrevista, la ficha aparece en el listado de Fichas de Admisión
+    ficha_id = ficha_portal["id"]
+    res_adm_before = client.get("/api/v1/academic/coordinator/admissions")
+    assert res_adm_before.status_code == 200
+    assert any(item["id"] == ficha_id for item in res_adm_before.json()["data"]["items"])
+
+    # Ingreso de Ficha de Admisión Manual (caso presencial en clínica)
+    res_manual_ficha = client.post(
+        "/api/v1/academic/coordinator/admissions",
+        json={
+            "email": "gonzalo.clinica@sanbao.cl",
+            "first_name": "Gonzalo",
+            "last_name": "Vargas Pinto",
+            "phone": "+56 9 7444 5566",
+            "study_format": "Presencial",
+            "campus": "Santiago",
+            "source": "PRESENCIAL_CLINICA",
+            "rut": "16.543.210-8",
+            "interviewer_notes": "Atendido presencialmente en recepción clínica Providencia. Interés en cohorte marzo.",
+        },
+    )
+    assert res_manual_ficha.status_code in (200, 201)
+    ficha_manual = res_manual_ficha.json()["data"]
+    assert ficha_manual["source"] == "PRESENCIAL_CLINICA"
+    assert ficha_manual["campus"] == "SANTIAGO"
+    assert ficha_manual["study_format"] == "PRESENCIAL"
+
+    # Programar entrevista para la ficha recibida del portal:
+    # Debe enviar correo con la cita, salir del listado de Fichas de Admisión y agregarse al Listado de Entrevistas
+    res_sched = client.put(
+        f"/api/v1/academic/coordinator/admissions/{ficha_id}/schedule-interview",
+        json={
+            "interview_date": "2026-11-20",
+            "interview_time": "11:30",
+            "interviewer_name": "Dra. Claudia Morales (Dir. Académica)",
+            "interview_modality": "ONLINE_ZOOM",
+            "interviewer_notes": "Coordinada vía WhatsApp para revisión de requisitos.",
+        },
+    )
+    assert res_sched.status_code == 200
+    sched_data = res_sched.json()["data"]
+    assert sched_data["status"] == "ENTREVISTA_AGENDADA"
+    assert sched_data["interview_date"] == "2026-11-20"
+    assert sched_data["interview_time"] == "11:30"
+    assert sched_data["email_sent"] is True
+    assert sched_data["moved_to_interviews_list"] is True
+    assert sched_data["email_notification"]["recipient"] == "francisca.portal@sanbao.cl"
+    assert "2026-11-20" in sched_data["email_notification"]["subject"]
+
+    # Verificar que ya salió del listado de Fichas de Admisión
+    res_adm_after = client.get("/api/v1/academic/coordinator/admissions")
+    assert res_adm_after.status_code == 200
+    assert not any(item["id"] == ficha_id for item in res_adm_after.json()["data"]["items"])
+
+    # Verificar que se agregó al Listado de Entrevistas filtrando por fecha de trabajo diario
+    res_int_list = client.get("/api/v1/academic/coordinator/interviews?interview_date=2026-11-20")
+    assert res_int_list.status_code == 200
+    int_payload = res_int_list.json()["data"]
+    assert any(item["id"] == ficha_id for item in int_payload["interviews"])
+
+    # Evaluar entrevista en el Listado de Entrevistas (Aceptar según criterio del entrevistador) para habilitar matrícula
+    res_eval = client.put(
+        f"/api/v1/academic/coordinator/admissions/{ficha_id}/evaluate-interview",
+        json={
+            "decision": "ACEPTADO",
+            "interviewer_notes": "Excelente perfil vocacional. Aceptada para iniciar matrícula.",
+        },
+    )
+    assert res_eval.status_code == 200
+    eval_data = res_eval.json()["data"]
+    assert eval_data["status"] == "ACEPTADO"
+    assert eval_data["evaluation_decision"] == "ACEPTADO"
+
+
+
+
 
 
 

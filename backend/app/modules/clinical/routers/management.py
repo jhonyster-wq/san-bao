@@ -263,12 +263,47 @@ def ensure_sample_tutors(db: Session):
 
 
 def ensure_sample_shifts(db: Session, company_id: str):
-    """Garantiza la existencia de turnos clínicos oficiales de Acupuntura y Tui na designados por Dirección Clínica."""
+    """Garantiza la existencia de turnos clínicos oficiales de Acupuntura y Tui na designados por Dirección Clínica.
+    Regla institucional: un tutor solo puede tener hasta tres turnos por día (AM, PM y Vespertino).
+    """
+    ensure_sample_tutors(db)
+    santiago = db.query(Campus).filter(Campus.code == "SEDE-CENTRAL").first()
+    vina = db.query(Campus).filter(Campus.code == "SEDE-VINA").first()
+    tutors = db.query(Practitioner).filter(Practitioner.is_tutor == True).all()
+    tutor_map = {t.license_number: t.id for t in tutors}
+
     shifts = db.query(ClinicalShiftSchedule).filter(
         ClinicalShiftSchedule.company_id == company_id,
         ClinicalShiftSchedule.deleted_at.is_(None)
     ).all()
     if shifts and any(s.service_type == "TUI_NA" for s in shifts):
+        # Normalizar asignaciones y nombres para garantizar que cada tutor tenga máximo 3 turnos por día (AM, PM, VESPERTINO)
+        # y que el nombre del turno muestre el bloque (Turno AM / Turno PM / Turno Vespertino) sin horas.
+        canonical_tutor_by_code = {
+            "TUR-ACU-STGO-AM": tutor_map.get("SIS-14201"),
+            "TUR-ACU-STGO-PM": tutor_map.get("SIS-18944"),
+            "TUR-ACU-STGO-VESP": tutor_map.get("SIS-20112"),
+            "TUR-TUI-STGO-AM": tutor_map.get("SIS-22409"),
+            "TUR-TUI-STGO-PM": tutor_map.get("SIS-14201"),
+            "TUR-TUI-STGO-VESP": tutor_map.get("SIS-18944"),
+            "TUR-ACU-VINA-AM": tutor_map.get("SIS-20112"),
+            "TUR-ACU-VINA-PM": tutor_map.get("SIS-22409"),
+            "TUR-ACU-VINA-VESP": tutor_map.get("SIS-14201"),
+            "TUR-TUI-VINA-AM": tutor_map.get("SIS-18944"),
+            "TUR-TUI-VINA-PM": tutor_map.get("SIS-20112"),
+            "TUR-TUI-VINA-VESP": tutor_map.get("SIS-22409"),
+        }
+        dirty = False
+        for s in shifts:
+            target_pid = canonical_tutor_by_code.get(s.shift_code)
+            if target_pid and s.practitioner_id != target_pid:
+                s.practitioner_id = target_pid
+                dirty = True
+            if s.shift_name and "(" in s.shift_name:
+                s.shift_name = s.shift_name.split("(")[0].strip()
+                dirty = True
+        if dirty:
+            db.commit()
         return shifts
 
     # Si hay turnos antiguos sin Tui na, eliminarlos limpiamente para refrescar la programación oficial
@@ -277,39 +312,30 @@ def ensure_sample_shifts(db: Session, company_id: str):
             db.delete(old_s)
         db.commit()
 
-    ensure_sample_tutors(db)
-    santiago = db.query(Campus).filter(Campus.code == "SEDE-CENTRAL").first()
-    vina = db.query(Campus).filter(Campus.code == "SEDE-VINA").first()
-    tutors = db.query(Practitioner).filter(Practitioner.is_tutor == True).all()
-    tutor_map = {t.license_number: t.id for t in tutors}
-
     today = date.today()
 
-    # Programación oficial Dirección Clínica San Bao SpA:
-    # Acupuntura & Tui na:
-    # AM: Lunes a Sábado 10:00 a 14:00
-    # PM: Lunes a Sábado 15:00 a 19:00
-    # Vespertino: Lunes a Viernes 18:00 a 22:00
+    # Programación oficial Dirección Clínica San Bao:
+    # Un tutor solo puede tener máximo 3 turnos por día: AM, PM y Vespertino (1 por bloque).
     official_shifts = [
         # --- SEDE SANTIAGO: ACUPUNTURA ---
-        ("TUR-ACU-STGO-AM", "Acupuntura • Turno AM (10:00 - 14:00)", "ACUPUNTURA", "AM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-01", tutor_map.get("SIS-14201"), "10:00", "14:00", "OPEN", "Turno oficial matutino Acupuntura y Ginecología MTC"),
-        ("TUR-ACU-STGO-PM", "Acupuntura • Turno PM (15:00 - 19:00)", "ACUPUNTURA", "PM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-02", tutor_map.get("SIS-18944"), "15:00", "19:00", "OPEN", "Turno oficial vespertino Fitoterapia y Craneopuntura YNSA"),
-        ("TUR-ACU-STGO-VESP", "Acupuntura • Turno Vespertino (18:00 - 22:00)", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", santiago.id if santiago else None, "BOX-01", tutor_map.get("SIS-20112"), "18:00", "22:00", "OPEN", "Atención nocturna Acupuntura Tung y Traumatología"),
+        ("TUR-ACU-STGO-AM", "Acupuntura • Turno AM", "ACUPUNTURA", "AM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-01", tutor_map.get("SIS-14201"), "10:00", "14:00", "OPEN", "Turno oficial AM Acupuntura y Ginecología MTC"),
+        ("TUR-ACU-STGO-PM", "Acupuntura • Turno PM", "ACUPUNTURA", "PM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-02", tutor_map.get("SIS-18944"), "15:00", "19:00", "OPEN", "Turno oficial PM Fitoterapia y Craneopuntura YNSA"),
+        ("TUR-ACU-STGO-VESP", "Acupuntura • Turno Vespertino", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", santiago.id if santiago else None, "BOX-01", tutor_map.get("SIS-20112"), "18:00", "22:00", "OPEN", "Turno oficial Vespertino Acupuntura Tung y Traumatología"),
 
         # --- SEDE SANTIAGO: TUI NA ---
-        ("TUR-TUI-STGO-AM", "Tui na • Turno AM (10:00 - 14:00)", "TUI_NA", "AM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-PRACTICA", tutor_map.get("SIS-22409"), "10:00", "14:00", "OPEN", "Masaje Terapéutico Tui na y Digitopuntura Matutina"),
-        ("TUR-TUI-STGO-PM", "Tui na • Turno PM (15:00 - 19:00)", "TUI_NA", "PM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-PRACTICA", tutor_map.get("SIS-14201"), "15:00", "19:00", "OPEN", "Tui na y Manipulaciones Miofasciales Tradicionales"),
-        ("TUR-TUI-STGO-VESP", "Tui na • Turno Vespertino (18:00 - 22:00)", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", santiago.id if santiago else None, "BOX-02", tutor_map.get("SIS-18944"), "18:00", "22:00", "OPEN", "Tui na nocturno para rehabilitación neuromuscular"),
+        ("TUR-TUI-STGO-AM", "Tui na • Turno AM", "TUI_NA", "AM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-PRACTICA", tutor_map.get("SIS-22409"), "10:00", "14:00", "OPEN", "Turno oficial AM Masaje Terapéutico Tui na"),
+        ("TUR-TUI-STGO-PM", "Tui na • Turno PM", "TUI_NA", "PM", "LUNES_A_SABADO", santiago.id if santiago else None, "BOX-PRACTICA", tutor_map.get("SIS-14201"), "15:00", "19:00", "OPEN", "Turno oficial PM Tui na y Manipulaciones Miofasciales"),
+        ("TUR-TUI-STGO-VESP", "Tui na • Turno Vespertino", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", santiago.id if santiago else None, "BOX-02", tutor_map.get("SIS-18944"), "18:00", "22:00", "OPEN", "Turno oficial Vespertino Tui na Rehabilitación"),
 
         # --- SEDE VIÑA DEL MAR: ACUPUNTURA ---
-        ("TUR-ACU-VINA-AM", "Acupuntura • Turno AM (10:00 - 14:00)", "ACUPUNTURA", "AM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-01", tutor_map.get("SIS-20112"), "10:00", "14:00", "OPEN", "Acupuntura Tung y Alivio del Dolor Viña del Mar"),
-        ("TUR-ACU-VINA-PM", "Acupuntura • Turno PM (15:00 - 19:00)", "ACUPUNTURA", "PM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-02", tutor_map.get("SIS-22409"), "15:00", "19:00", "OPEN", "Acupuntura y Auriculoterapia Viña del Mar"),
-        ("TUR-ACU-VINA-VESP", "Acupuntura • Turno Vespertino (18:00 - 22:00)", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", vina.id if vina else None, "BOX-VINA-01", tutor_map.get("SIS-20112"), "18:00", "22:00", "OPEN", "Atención nocturna Acupuntura Costa"),
+        ("TUR-ACU-VINA-AM", "Acupuntura • Turno AM", "ACUPUNTURA", "AM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-01", tutor_map.get("SIS-20112"), "10:00", "14:00", "OPEN", "Turno oficial AM Acupuntura Tung Viña del Mar"),
+        ("TUR-ACU-VINA-PM", "Acupuntura • Turno PM", "ACUPUNTURA", "PM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-02", tutor_map.get("SIS-22409"), "15:00", "19:00", "OPEN", "Turno oficial PM Acupuntura y Auriculoterapia Viña del Mar"),
+        ("TUR-ACU-VINA-VESP", "Acupuntura • Turno Vespertino", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", vina.id if vina else None, "BOX-VINA-01", tutor_map.get("SIS-14201"), "18:00", "22:00", "OPEN", "Turno oficial Vespertino Acupuntura Costa"),
 
         # --- SEDE VIÑA DEL MAR: TUI NA ---
-        ("TUR-TUI-VINA-AM", "Tui na • Turno AM (10:00 - 14:00)", "TUI_NA", "AM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-03", tutor_map.get("SIS-22409"), "10:00", "14:00", "OPEN", "Masaje Tui na Ortopédico y Pediátrico Viña"),
-        ("TUR-TUI-VINA-PM", "Tui na • Turno PM (15:00 - 19:00)", "TUI_NA", "PM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-03", tutor_map.get("SIS-20112"), "15:00", "19:00", "OPEN", "Tui na profundo y Ventosas Tradicionales"),
-        ("TUR-TUI-VINA-VESP", "Tui na • Turno Vespertino (18:00 - 22:00)", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", vina.id if vina else None, "BOX-VINA-02", tutor_map.get("SIS-22409"), "18:00", "22:00", "OPEN", "Tui na vespertino para trabajadores y estudiantes"),
+        ("TUR-TUI-VINA-AM", "Tui na • Turno AM", "TUI_NA", "AM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-03", tutor_map.get("SIS-18944"), "10:00", "14:00", "OPEN", "Turno oficial AM Masaje Tui na Viña del Mar"),
+        ("TUR-TUI-VINA-PM", "Tui na • Turno PM", "TUI_NA", "PM", "LUNES_A_SABADO", vina.id if vina else None, "BOX-VINA-03", tutor_map.get("SIS-20112"), "15:00", "19:00", "OPEN", "Turno oficial PM Tui na y Ventosas Tradicionales"),
+        ("TUR-TUI-VINA-VESP", "Tui na • Turno Vespertino", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", vina.id if vina else None, "BOX-VINA-02", tutor_map.get("SIS-22409"), "18:00", "22:00", "OPEN", "Turno oficial Vespertino Tui na Viña del Mar"),
     ]
 
     created = []
@@ -350,23 +376,23 @@ def seed_monthly_calendar_shifts(db: Session, company_id: str, year: int, month:
     tutors = db.query(Practitioner).filter(Practitioner.is_tutor == True).all()
     tutor_map = {t.license_number: t.id for t in tutors}
 
-    # Plantilla de turnos oficiales por sede y franja
+    # Plantilla de turnos oficiales por sede y bloque (cada tutor tiene máximo 3 turnos por día: AM, PM y Vespertino)
     patterns = [
-        ("ACU", "ACUPUNTURA", "AM", "LUNES_A_SABADO", santiago, "BOX-01", "SIS-14201", "10:00", "14:00", "Acupuntura • Turno AM (10:00 - 14:00)"),
-        ("ACU", "ACUPUNTURA", "PM", "LUNES_A_SABADO", santiago, "BOX-02", "SIS-18944", "15:00", "19:00", "Acupuntura • Turno PM (15:00 - 19:00)"),
-        ("ACU", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", santiago, "BOX-01", "SIS-20112", "18:00", "22:00", "Acupuntura • Turno Vespertino (18:00 - 22:00)"),
+        ("ACU", "ACUPUNTURA", "AM", "LUNES_A_SABADO", santiago, "BOX-01", "SIS-14201", "10:00", "14:00", "Acupuntura • Turno AM"),
+        ("ACU", "ACUPUNTURA", "PM", "LUNES_A_SABADO", santiago, "BOX-02", "SIS-18944", "15:00", "19:00", "Acupuntura • Turno PM"),
+        ("ACU", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", santiago, "BOX-01", "SIS-20112", "18:00", "22:00", "Acupuntura • Turno Vespertino"),
         
-        ("TUI", "TUI_NA", "AM", "LUNES_A_SABADO", santiago, "BOX-PRACTICA", "SIS-22409", "10:00", "14:00", "Tui na • Turno AM (10:00 - 14:00)"),
-        ("TUI", "TUI_NA", "PM", "LUNES_A_SABADO", santiago, "BOX-PRACTICA", "SIS-14201", "15:00", "19:00", "Tui na • Turno PM (15:00 - 19:00)"),
-        ("TUI", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", santiago, "BOX-02", "SIS-18944", "18:00", "22:00", "Tui na • Turno Vespertino (18:00 - 22:00)"),
+        ("TUI", "TUI_NA", "AM", "LUNES_A_SABADO", santiago, "BOX-PRACTICA", "SIS-22409", "10:00", "14:00", "Tui na • Turno AM"),
+        ("TUI", "TUI_NA", "PM", "LUNES_A_SABADO", santiago, "BOX-PRACTICA", "SIS-14201", "15:00", "19:00", "Tui na • Turno PM"),
+        ("TUI", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", santiago, "BOX-02", "SIS-18944", "18:00", "22:00", "Tui na • Turno Vespertino"),
 
-        ("ACU", "ACUPUNTURA", "AM", "LUNES_A_SABADO", vina, "BOX-VINA-01", "SIS-20112", "10:00", "14:00", "Acupuntura • Turno AM (10:00 - 14:00)"),
-        ("ACU", "ACUPUNTURA", "PM", "LUNES_A_SABADO", vina, "BOX-VINA-02", "SIS-22409", "15:00", "19:00", "Acupuntura • Turno PM (15:00 - 19:00)"),
-        ("ACU", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", vina, "BOX-VINA-01", "SIS-20112", "18:00", "22:00", "Acupuntura • Turno Vespertino (18:00 - 22:00)"),
+        ("ACU", "ACUPUNTURA", "AM", "LUNES_A_SABADO", vina, "BOX-VINA-01", "SIS-20112", "10:00", "14:00", "Acupuntura • Turno AM"),
+        ("ACU", "ACUPUNTURA", "PM", "LUNES_A_SABADO", vina, "BOX-VINA-02", "SIS-22409", "15:00", "19:00", "Acupuntura • Turno PM"),
+        ("ACU", "ACUPUNTURA", "VESPERTINO", "LUNES_A_VIERNES", vina, "BOX-VINA-01", "SIS-14201", "18:00", "22:00", "Acupuntura • Turno Vespertino"),
 
-        ("TUI", "TUI_NA", "AM", "LUNES_A_SABADO", vina, "BOX-VINA-03", "SIS-22409", "10:00", "14:00", "Tui na • Turno AM (10:00 - 14:00)"),
-        ("TUI", "TUI_NA", "PM", "LUNES_A_SABADO", vina, "BOX-VINA-03", "SIS-20112", "15:00", "19:00", "Tui na • Turno PM (15:00 - 19:00)"),
-        ("TUI", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", vina, "BOX-VINA-02", "SIS-22409", "18:00", "22:00", "Tui na • Turno Vespertino (18:00 - 22:00)"),
+        ("TUI", "TUI_NA", "AM", "LUNES_A_SABADO", vina, "BOX-VINA-03", "SIS-18944", "10:00", "14:00", "Tui na • Turno AM"),
+        ("TUI", "TUI_NA", "PM", "LUNES_A_SABADO", vina, "BOX-VINA-03", "SIS-20112", "15:00", "19:00", "Tui na • Turno PM"),
+        ("TUI", "TUI_NA", "VESPERTINO", "LUNES_A_VIERNES", vina, "BOX-VINA-02", "SIS-22409", "18:00", "22:00", "Tui na • Turno Vespertino"),
     ]
 
     created = []

@@ -2262,6 +2262,56 @@ class AcademicCoordinatorService:
             webpay_amount=initial_webpay_amount,
         )
         self.db.add(onboarding)
+
+        # Vincular con entrevista / ficha de admisión y agregar descripción a la Hoja de Vida del Alumno
+        linked_app = None
+        if getattr(data, "admission_application_id", None):
+            linked_app = (
+                self.db.query(AdmissionApplication)
+                .filter(
+                    or_(
+                        AdmissionApplication.id == data.admission_application_id,
+                        AdmissionApplication.application_code == data.admission_application_id,
+                    ),
+                    AdmissionApplication.deleted_at.is_(None),
+                )
+                .first()
+            )
+        if not linked_app and data.email:
+            linked_app = (
+                self.db.query(AdmissionApplication)
+                .filter(
+                    AdmissionApplication.email == data.email.strip(),
+                    AdmissionApplication.deleted_at.is_(None),
+                )
+                .order_by(desc(AdmissionApplication.created_at))
+                .first()
+            )
+
+        life_desc = (
+            getattr(data, "life_record_notes", None)
+            or getattr(data, "hoja_de_vida_descripcion", None)
+            or (linked_app.interviewer_notes if linked_app else None)
+            or ""
+        ).strip()
+
+        interviewer_author = (
+            linked_app.interviewer_name
+            if (linked_app and linked_app.interviewer_name)
+            else "Entrevista de Admisión San Bao"
+        )
+        if life_desc:
+            life_entry_line = f"[{date.today().isoformat()}|HOJA_DE_VIDA|{interviewer_author}] {life_desc}"
+            if life_entry_line not in (student.notes or ""):
+                student.notes = f"{(student.notes or '').strip()}\n{life_entry_line}".strip()
+
+        if linked_app:
+            linked_app.evaluation_decision = "ACEPTADO"
+            linked_app.status = "MATRICULADO"
+            linked_app.onboarding_id = onboarding_id
+            if life_desc:
+                linked_app.interviewer_notes = life_desc
+
         self.db.commit()
         fin_service.auto_verify_enrollment_payments()
         self.db.refresh(onboarding)
@@ -2274,6 +2324,8 @@ class AcademicCoordinatorService:
             "student_was_reused": student_was_reused,
             "onboarding": serialized_onb,
             "email_notification": serialized_onb.get("email_notification"),
+            "removed_from_interviews_list": bool(linked_app is not None),
+            "life_record_notes": life_desc,
         }
 
     def confirm_onboarding_contract_signature(
@@ -5380,7 +5432,8 @@ class AcademicCoordinatorService:
         whatsapp_url = f"https://wa.me/{digits}?text={quote(wa_msg)}"
 
         eval_dec = app.evaluation_decision or "PENDIENTE"
-        if app.status == "MATRICULADO":
+        is_enrolled = bool(app.status == "MATRICULADO" or eval_dec == "MATRICULADO")
+        if is_enrolled:
             interview_dec = "ENROLLED"
         elif eval_dec == "ACEPTADO" or app.status == "ACEPTADO":
             interview_dec = "ACCEPTED"
@@ -5419,12 +5472,14 @@ class AcademicCoordinatorService:
             "interviewer_name": app.interviewer_name or "Coordinación Académica San Bao",
             "interview_modality": app.interview_modality or "PRESENCIAL",
             "interviewer_notes": app.interviewer_notes or "",
+            "life_record_notes": app.interviewer_notes or "",
             "technical_ficha_notes": app.interviewer_notes or "",
             "evaluation_decision": eval_dec,
             "interview_decision": interview_dec,
             "onboarding_id": app.onboarding_id,
-            "is_interview_scheduled": bool(app.interview_date or app.status in ("ENTREVISTA_AGENDADA", "ACEPTADO", "MATRICULADO", "RECHAZADO")),
-            "can_enroll": eval_dec == "ACEPTADO" or app.status in ("ACEPTADO", "MATRICULADO"),
+            "is_enrolled": is_enrolled,
+            "is_interview_scheduled": bool((app.interview_date or app.status in ("ENTREVISTA_AGENDADA", "ACEPTADO", "RECHAZADO")) and not is_enrolled),
+            "can_enroll": bool((eval_dec == "ACEPTADO" or app.status == "ACEPTADO") and not is_enrolled),
             "created_at": app.created_at.isoformat() if getattr(app, "created_at", None) else date.today().isoformat(),
         }
 
@@ -5448,6 +5503,8 @@ class AcademicCoordinatorService:
         all_serialized = [self._serialize_admission_application(r) for r in records]
 
         def matches(item: Dict[str, Any]) -> bool:
+            if item["is_enrolled"]:
+                return False
             if only_interviews and not item["is_interview_scheduled"]:
                 return False
             if not only_interviews and item["is_interview_scheduled"]:
@@ -5486,8 +5543,8 @@ class AcademicCoordinatorService:
             return True
 
         filtered_items = [i for i in all_serialized if matches(i)]
-        pending_items = [i for i in all_serialized if not i["is_interview_scheduled"]]
-        interviews_list = [i for i in all_serialized if i["is_interview_scheduled"]]
+        pending_items = [i for i in all_serialized if not i["is_interview_scheduled"] and not i["is_enrolled"]]
+        interviews_list = [i for i in all_serialized if i["is_interview_scheduled"] and not i["is_enrolled"]]
         interviews_list.sort(key=lambda x: (x.get("interview_date") or "9999-12-31", x.get("interview_time") or "23:59"))
 
         today_str = date.today().isoformat()
@@ -5703,8 +5760,14 @@ class AcademicCoordinatorService:
 
         if data.interviewer_name:
             app_obj.interviewer_name = data.interviewer_name.strip()
-        if data.interviewer_notes is not None and data.interviewer_notes.strip():
-            app_obj.interviewer_notes = data.interviewer_notes.strip()
+
+        life_notes = (
+            getattr(data, "life_record_notes", None)
+            or getattr(data, "hoja_de_vida_descripcion", None)
+            or data.interviewer_notes
+        )
+        if life_notes is not None and life_notes.strip():
+            app_obj.interviewer_notes = life_notes.strip()
         if data.rut and data.rut.strip():
             app_obj.rut = data.rut.strip()
 
@@ -5720,6 +5783,8 @@ class AcademicCoordinatorService:
 
         self.db.commit()
         self.db.refresh(app_obj)
-        return self._serialize_admission_application(app_obj)
+        serialized = self._serialize_admission_application(app_obj)
+        serialized["removed_from_interviews_list"] = bool(decision_norm == "MATRICULADO")
+        return serialized
 
 

@@ -65,6 +65,9 @@ class InitiateOnboardingRequest(BaseModel):
     first_due_date: Optional[str] = Field(None, description="Fecha primer vencimiento opcional")
     guarantor_name: Optional[str] = Field(None, description="Nombre del codeudor/avalista opcional")
     guarantor_rut: Optional[str] = Field(None, description="RUT del codeudor/avalista opcional")
+    admission_application_id: Optional[str] = Field(None, description="ID de la entrevista/ficha de admisión origen")
+    life_record_notes: Optional[str] = Field(None, description="Descripción opcional para la Hoja de Vida del alumno ingresada en la entrevista")
+    hoja_de_vida_descripcion: Optional[str] = Field(None, description="Alias de life_record_notes")
 
 
 class SignOnboardingContractRequest(BaseModel):
@@ -190,7 +193,9 @@ class ScheduleAdmissionInterviewRequest(BaseModel):
 class EvaluateAdmissionInterviewRequest(BaseModel):
     decision: str = Field("ACEPTADO", description="Criterio del entrevistador: ACEPTADO o RECHAZADO")
     interviewer_name: Optional[str] = Field(None, description="Nombre del entrevistador que evalúa")
-    interviewer_notes: Optional[str] = Field(None, description="Ficha técnica y comentarios de la entrevista")
+    interviewer_notes: Optional[str] = Field(None, description="Descripción para la Hoja de Vida y comentarios de la entrevista")
+    life_record_notes: Optional[str] = Field(None, description="Descripción opcional para la Hoja de Vida del alumno")
+    hoja_de_vida_descripcion: Optional[str] = Field(None, description="Alias de life_record_notes")
     rut: Optional[str] = Field(None, description="RUT confirmado en la entrevista para iniciar matrícula")
 
 

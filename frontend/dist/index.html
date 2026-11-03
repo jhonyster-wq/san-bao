@@ -2548,10 +2548,6 @@
                 <button type="button" onclick="clearInterviewsDateFilter()" class="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 font-bold text-xs cursor-pointer">
                   Ver Todas las Fechas
                 </button>
-                <button type="button" onclick="openManualAdmissionFichaFromInterviews()" class="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs">
-                  <i data-lucide="file-plus-2" class="w-4 h-4"></i>
-                  <span>+ Agregar Ficha de Admisión</span>
-                </button>
               </div>
             </div>
 
@@ -2607,8 +2603,7 @@
                   <select id="int-filter-decision" onchange="filterCoordinatorInterviews()" class="w-full px-3 py-2 rounded-xl bg-[#F8FAFC] border border-slate-200 font-bold text-slate-800">
                     <option value="ALL">Todas las Decisiones</option>
                     <option value="PENDING">⏳ Pendiente de Evaluación</option>
-                    <option value="ACCEPTED">✅ Aceptado para Matrícula</option>
-                    <option value="ENROLLED">🎓 Matriculado</option>
+                    <option value="ACCEPTED">✅ Aceptada (Matrícula Habilitada)</option>
                     <option value="REJECTED">✕ No Admitido</option>
                   </select>
                 </div>
@@ -2627,7 +2622,7 @@
                       <th class="py-3 px-3.5">Postulante (Nombre, Apellidos &amp; Correo)</th>
                       <th class="py-3 px-3.5">Teléfono &amp; Contacto WhatsApp</th>
                       <th class="py-3 px-3.5">Formato &amp; Sede Postulación</th>
-                      <th class="py-3 px-3.5">Ficha Técnica &amp; Observaciones</th>
+                      <th class="py-3 px-3.5">Descripción para Hoja de Vida (Opcional)</th>
                       <th class="py-3 px-3.5">Criterio del Entrevistador</th>
                       <th class="py-3 px-3.5 text-right">Proceso de Matrícula</th>
                     </tr>
@@ -10763,6 +10758,15 @@
           </div>
         </div>
 
+        <!-- Descripción para Hoja de Vida del Alumno (Opcional) -->
+        <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+          <label for="m-life-record-notes" class="block text-xs font-bold text-slate-800">
+            📋 Descripción para su Hoja de Vida (Opcional)
+          </label>
+          <input type="text" id="m-life-record-notes" placeholder="Opcional: Antecedentes de entrevista, motivación o nota inicial para la Hoja de Vida del alumno..."
+                 class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#1A56B2]" />
+        </div>
+
         <!-- PASO 3: Aviso de Envío de Contrato Electrónico al Correo y Flujo Webpay -->
         <div class="p-3.5 bg-[#EBF2FC] border border-blue-200 rounded-2xl flex items-start gap-2.5 text-[11px] text-[#0C1D36]">
           <i data-lucide="mail-check" class="w-4 h-4 text-[#1A56B2] flex-shrink-0 mt-0.5"></i>
@@ -13827,6 +13831,12 @@
       const submitBtn = document.getElementById('btn-submit-enrollment');
       if (submitBtn) submitBtn.disabled = true;
 
+      const lifeRecordNotesVal = (
+        document.getElementById('m-life-record-notes')?.value?.trim() ||
+        onboardingState.fromAdmissionLifeRecordNotes ||
+        ''
+      );
+
       try {
         const res = await fetch('/api/v1/academic/coordinator/onboarding/initiate', {
           method: 'POST',
@@ -13842,7 +13852,10 @@
             enrollment_fee: enrollmentFee,
             tuition_amount: tuitionAmount,
             installments_count: installmentsCount,
-            first_due_date: firstDueDate
+            first_due_date: firstDueDate,
+            admission_application_id: onboardingState.fromAdmissionApplicationId || null,
+            life_record_notes: lifeRecordNotesVal || null,
+            hoja_de_vida_descripcion: lifeRecordNotesVal || null
           })
         });
         const json = await res.json();
@@ -13850,27 +13863,16 @@
           throw new Error(json.detail || json.message || 'No se pudo iniciar el proceso de matrícula.');
         }
 
-        if (onboardingState.fromAdmissionApplicationId) {
-          try {
-            await fetch(`/api/v1/academic/coordinator/admissions/${encodeURIComponent(onboardingState.fromAdmissionApplicationId)}/evaluate-interview`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                decision: 'ENROLLED',
-                interviewer_notes: `Matriculado formalmente (${json.data?.student_number || 'MAT-2026'}).`
-              })
-            });
-          } catch (e) {
-            console.warn('Error updating admission application status on enrollment:', e);
-          } finally {
-            onboardingState.fromAdmissionApplicationId = null;
-          }
-        }
+        onboardingState.fromAdmissionApplicationId = null;
+        onboardingState.fromAdmissionLifeRecordNotes = null;
+        const lifeNotesEl = document.getElementById('m-life-record-notes');
+        if (lifeNotesEl) lifeNotesEl.value = '';
 
         closeEnrollmentModal();
         await loadCoordinatorEnrollments();
-        if (typeof loadCoordinatorAdmissionsPanel === 'function') loadCoordinatorAdmissionsPanel();
-        if (typeof loadCoordinatorInterviewsPanel === 'function') loadCoordinatorInterviewsPanel();
+        if (typeof loadCoordinatorMatriculasPanel === 'function') await loadCoordinatorMatriculasPanel();
+        if (typeof loadCoordinatorAdmissionsPanel === 'function') await loadCoordinatorAdmissionsPanel();
+        if (typeof loadCoordinatorInterviewsPanel === 'function') await loadCoordinatorInterviewsPanel();
         openOnboardingWizardModal(json.data);
       } catch (err) {
         showSanBaoAlert(err.message || 'Error al confirmar matrícula.');
@@ -21921,7 +21923,9 @@
             decision: decision,
             interviewer_notes: notesVal || (decision === 'ACCEPTED'
               ? 'Criterio del entrevistador favorable. Postulante aceptado y habilitado para iniciar proceso de matrícula.'
-              : 'Postulación no admitida en esta convocatoria.')
+              : 'Postulación no admitida en esta convocatoria.'),
+            life_record_notes: notesVal || null,
+            hoja_de_vida_descripcion: notesVal || null
           })
         });
         const json = await res.json();
@@ -21932,7 +21936,7 @@
         if (typeof showSanBaoAlert === 'function') {
           showSanBaoAlert(
             json.message,
-            decision === 'ACCEPTED' ? '✅ Postulante Aceptado para Matrícula' : 'Decisión Registrada',
+            decision === 'ACCEPTED' ? '✅ Entrevista Aceptada — Matrícula Habilitada' : 'Decisión Registrada',
             decision === 'ACCEPTED' ? 'success' : 'info'
           );
         }
@@ -21967,14 +21971,23 @@
         pill.textContent = dateVal ? `Mostrando Trabajo Diario: ${dateVal}` : 'Todas las Entrevistas Programadas';
       }
 
-      const allInterviews = (coordState.interviewsList && coordState.interviewsList.length)
+      const rawInterviews = (coordState.interviewsList && coordState.interviewsList.length)
         ? coordState.interviewsList
         : (coordState.admissionFichas || []).filter(f => Boolean(f.interview_date) || f.source === 'PRESENCIAL_CLINICA');
+
+      // Excluir fichas ya matriculadas (que ya pasaron a la Nómina de Matriculados)
+      const allInterviews = rawInterviews.filter(f => !(
+        f.is_enrolled ||
+        f.status === 'MATRICULADO' ||
+        f.status === 'ENROLLED' ||
+        f.interview_decision === 'ENROLLED' ||
+        f.evaluation_decision === 'MATRICULADO'
+      ));
 
       // Actualizar KPIs del panel de entrevistas
       const todayCount = allInterviews.filter(x => x.interview_date === '2026-11-02').length;
       const pendingCount = allInterviews.filter(x => (x.interview_decision || 'PENDING') === 'PENDING').length;
-      const acceptedCount = allInterviews.filter(x => x.interview_decision === 'ACCEPTED' || x.status === 'ACCEPTED').length;
+      const acceptedCount = allInterviews.filter(x => x.interview_decision === 'ACCEPTED' || x.status === 'ACCEPTED' || x.status === 'ACEPTADO').length;
       const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
       setTxt('int-kpi-total', allInterviews.length);
       setTxt('int-kpi-today', todayCount);
@@ -21987,7 +22000,7 @@
         if (formatVal !== 'ALL' && f.study_format !== formatVal) return false;
         if (decisionVal !== 'ALL' && (f.interview_decision || 'PENDING') !== decisionVal) return false;
         if (searchVal) {
-          const hay = `${f.application_code || ''} ${f.first_name || ''} ${f.last_name || ''} ${f.full_name || ''} ${f.email || ''} ${f.phone || ''} ${f.interviewer_name || ''} ${f.technical_ficha_notes || ''}`.toLowerCase();
+          const hay = `${f.application_code || ''} ${f.first_name || ''} ${f.last_name || ''} ${f.full_name || ''} ${f.email || ''} ${f.phone || ''} ${f.interviewer_name || ''} ${f.life_record_notes || ''} ${f.interviewer_notes || ''}`.toLowerCase();
           if (!hay.includes(searchVal)) return false;
         }
         return true;
@@ -22027,16 +22040,31 @@
 
         const waUrl = f.whatsapp_url || `https://wa.me/${String(f.phone || '').replace(/\D/g, '')}`;
 
+        const isAccepted = Boolean(
+          f.can_enroll ||
+          f.interview_decision === 'ACCEPTED' ||
+          f.evaluation_decision === 'ACEPTADO' ||
+          f.status === 'ACEPTADO'
+        );
+
         let decisionBadge = '';
-        if (f.status === 'ENROLLED' || f.interview_decision === 'ENROLLED') {
-          decisionBadge = `<span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold text-[10px]">🎓 MATRICULADO (${escapeHtml(f.enrolled_student_number || 'MAT-2026')})</span>`;
-        } else if (f.interview_decision === 'ACCEPTED') {
-          decisionBadge = `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 font-extrabold text-[10px]">✅ ACEPTADO POR ENTREVISTADOR</span>`;
-        } else if (f.interview_decision === 'REJECTED') {
+        if (isAccepted) {
+          decisionBadge = `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 font-extrabold text-[10px]">✅ ENTREVISTA ACEPTADA (MATRÍCULA HABILITADA)</span>`;
+        } else if (f.interview_decision === 'REJECTED' || f.evaluation_decision === 'RECHAZADO') {
           decisionBadge = `<span class="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200 font-extrabold text-[10px]">✕ RECHAZADO</span>`;
         } else {
-          decisionBadge = `<span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px]">⏳ PENDIENTE CRITERIO ENTREVISTADOR</span>`;
+          decisionBadge = `<span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[10px]">⏳ PENDIENTE ACEPTACIÓN DE ENTREVISTA</span>`;
         }
+
+        const enrollmentActionHtml = isAccepted
+          ? `<button type="button" onclick="initiateEnrollmentFromAdmission('${escapeHtml(f.id)}')" class="px-3.5 py-2 rounded-xl bg-[#1A56B2] hover:bg-[#15458F] text-white font-extrabold text-xs shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
+               <span>🎓 Matricular / Enviar Correo de Matrícula</span>
+             </button>`
+          : `<button type="button" disabled title="Debe aceptar la entrevista antes de habilitar el proceso de matrícula" class="px-3.5 py-2 rounded-xl bg-slate-100 text-slate-400 border border-slate-200 font-bold text-[11px] inline-flex items-center gap-1.5 cursor-not-allowed opacity-80">
+               <span>🔒 Acepte Entrevista para Habilitar Matrícula</span>
+             </button>`;
+
+        const notesInitialValue = f.life_record_notes || f.hoja_de_vida_descripcion || f.interviewer_notes || '';
 
         return `
           <tr class="hover:bg-slate-50/80 transition-colors align-top">
@@ -22063,16 +22091,18 @@
               <div>${campusBadge}</div>
             </td>
             <td class="py-3 px-3.5">
-              <div class="space-y-1.5 max-w-xs">
-                ${f.technical_ficha_notes ? `<div class="text-[10px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200"><strong>Ficha Técnica:</strong> ${escapeHtml(f.technical_ficha_notes)}</div>` : ''}
-                <input type="text" id="int-notes-input-${escapeHtml(f.id)}" value="${escapeHtml(f.interviewer_notes || '')}" placeholder="Anotar criterio / observaciones de entrevista..." class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px] text-slate-800 bg-white">
+              <div class="space-y-1 max-w-xs">
+                <label for="int-notes-input-${escapeHtml(f.id)}" class="block text-[10px] font-bold text-slate-600">
+                  📋 Descripción para su Hoja de Vida (Opcional):
+                </label>
+                <input type="text" id="int-notes-input-${escapeHtml(f.id)}" value="${escapeHtml(notesInitialValue)}" placeholder="Opcional: agregar descripción para su Hoja de Vida..." class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px] text-slate-800 bg-white">
               </div>
             </td>
             <td class="py-3 px-3.5 space-y-2">
               <div>${decisionBadge}</div>
               <div class="flex flex-wrap items-center gap-1.5">
                 <button type="button" onclick="evaluateAdmissionInterviewDecision('${escapeHtml(f.id)}', 'ACCEPTED')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] cursor-pointer">
-                  ✓ Aceptar
+                  ✓ Aceptar Entrevista
                 </button>
                 <button type="button" onclick="evaluateAdmissionInterviewDecision('${escapeHtml(f.id)}', 'REJECTED')" class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[10px] cursor-pointer">
                   ✕ Rechazar
@@ -22080,9 +22110,7 @@
               </div>
             </td>
             <td class="py-3 px-3.5 text-right whitespace-nowrap">
-              <button type="button" onclick="initiateEnrollmentFromAdmission('${escapeHtml(f.id)}')" class="px-3.5 py-2 rounded-xl bg-[#1A56B2] hover:bg-[#15458F] text-white font-extrabold text-xs shadow-sm inline-flex items-center gap-1.5 cursor-pointer">
-                <span>🎓 Iniciar Proceso de Matrícula</span>
-              </button>
+              ${enrollmentActionHtml}
             </td>
           </tr>
         `;
@@ -22096,27 +22124,39 @@
                   (coordState.interviewsList || []).find(f => String(f.id) === String(fichaId));
       if (!ficha) {
         await loadCoordinatorAdmissionsPanel();
-        ficha = (coordState.admissionFichas || []).find(f => String(f.id) === String(fichaId));
+        await loadCoordinatorInterviewsPanel();
+        ficha = (coordState.admissionFichas || []).find(f => String(f.id) === String(fichaId)) ||
+                (coordState.interviewsList || []).find(f => String(f.id) === String(fichaId));
       }
       if (!ficha) return;
 
-      // Si aún estaba pendiente, marcar como ACCEPTED por el entrevistador al pasar a matrícula
-      if (ficha.interview_decision !== 'ACCEPTED' && ficha.status !== 'ENROLLED') {
-        try {
-          await fetch(`/api/v1/academic/coordinator/admissions/${encodeURIComponent(ficha.id)}/evaluate-interview`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              decision: 'ACCEPTED',
-              interviewer_notes: ficha.interviewer_notes || 'Aceptado por entrevistador; inicia proceso formal de matrícula.'
-            })
-          });
-        } catch (e) {
-          console.warn('Notice evaluating interview before enrollment:', e);
+      const isAccepted = Boolean(
+        ficha.can_enroll ||
+        ficha.interview_decision === 'ACCEPTED' ||
+        ficha.evaluation_decision === 'ACEPTADO' ||
+        ficha.status === 'ACEPTADO'
+      );
+
+      if (!isAccepted) {
+        if (typeof showSanBaoAlert === 'function') {
+          showSanBaoAlert(
+            'Debe aceptar la entrevista ("✓ Aceptar Entrevista") antes de habilitar e iniciar el proceso de matrícula.',
+            '🔒 Entrevista Pendiente de Aceptación',
+            'warning'
+          );
         }
+        return;
       }
 
+      const inlineNotesEl = document.getElementById(`int-notes-input-${ficha.id}`);
+      const lifeNotes = (inlineNotesEl ? inlineNotesEl.value.trim() : '') ||
+                        ficha.life_record_notes ||
+                        ficha.hoja_de_vida_descripcion ||
+                        ficha.interviewer_notes ||
+                        '';
+
       onboardingState.fromAdmissionApplicationId = ficha.id;
+      onboardingState.fromAdmissionLifeRecordNotes = lifeNotes;
       await openEnrollmentModal();
 
       const rutEl = document.getElementById('m-rut');
@@ -22124,12 +22164,14 @@
       const emailEl = document.getElementById('m-email');
       const phoneEl = document.getElementById('m-phone');
       const campusEl = document.getElementById('m-campus');
+      const lifeNotesModalEl = document.getElementById('m-life-record-notes');
 
       if (rutEl) rutEl.value = ficha.rut || '19.543.210-4';
       if (nameEl) nameEl.value = `${ficha.first_name || ''} ${ficha.last_name || ''}`.trim() || ficha.full_name || '';
       if (emailEl) emailEl.value = ficha.email || '';
       if (phoneEl) phoneEl.value = ficha.phone || '';
       if (campusEl) campusEl.value = ficha.campus === 'VINA_DEL_MAR' ? 'VINA_DEL_MAR' : 'SANTIAGO';
+      if (lifeNotesModalEl) lifeNotesModalEl.value = lifeNotes;
 
       await verifyApplicantRutForEnrollment(true);
     }

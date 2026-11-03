@@ -579,23 +579,86 @@ def test_coordinator_matriculas_panel_filters_and_summary(client: TestClient, db
     assert not any(item["id"] == ficha_id for item in res_adm_after.json()["data"]["items"])
 
     # Verificar que se agregó al Listado de Entrevistas filtrando por fecha de trabajo diario
+    # y que ANTES de aceptar la entrevista, la matrícula aún no está habilitada (can_enroll == False)
     res_int_list = client.get("/api/v1/academic/coordinator/interviews?interview_date=2026-11-20")
     assert res_int_list.status_code == 200
     int_payload = res_int_list.json()["data"]
-    assert any(item["id"] == ficha_id for item in int_payload["interviews"])
+    scheduled_interview_item = next((item for item in int_payload["interviews"] if item["id"] == ficha_id), None)
+    assert scheduled_interview_item is not None
+    assert scheduled_interview_item["can_enroll"] is False
 
-    # Evaluar entrevista en el Listado de Entrevistas (Aceptar según criterio del entrevistador) para habilitar matrícula
+    # Evaluar entrevista en el Listado de Entrevistas:
+    # Aceptar la entrevista y agregar una descripción opcional para su Hoja de Vida -> habilita la matrícula
+    life_record_desc = "Postulante con formación previa en enfermería y alta motivación clínica para Acupuntura."
     res_eval = client.put(
         f"/api/v1/academic/coordinator/admissions/{ficha_id}/evaluate-interview",
         json={
             "decision": "ACEPTADO",
-            "interviewer_notes": "Excelente perfil vocacional. Aceptada para iniciar matrícula.",
+            "life_record_notes": life_record_desc,
         },
     )
     assert res_eval.status_code == 200
     eval_data = res_eval.json()["data"]
     assert eval_data["status"] == "ACEPTADO"
     assert eval_data["evaluation_decision"] == "ACEPTADO"
+    assert eval_data["can_enroll"] is True
+    assert eval_data["life_record_notes"] == life_record_desc
+
+    # Iniciar matrícula y enviar correo de matrícula:
+    # Debe desaparecer del Listado de Entrevistas, agregarse a la Nómina de Matriculados y guardar la descripción en su Hoja de Vida
+    cat_res = client.get("/api/v1/academic/programs", headers=headers)
+    assert cat_res.status_code == 200
+    first_prog_id = cat_res.json()["data"][0]["id"]
+
+    res_init_mat = client.post(
+        "/api/v1/academic/coordinator/onboarding/initiate",
+        headers=headers,
+        json={
+            "rut": "19.876.543-2",
+            "first_name": "Francisca",
+            "last_name": "Araya Soto",
+            "email": "francisca.portal@sanbao.cl",
+            "phone": "+56 9 8111 2233",
+            "program_id": first_prog_id,
+            "campus": "VINA_DEL_MAR",
+            "enrollment_fee": 150000,
+            "tuition_amount": 2600000,
+            "installments_count": 10,
+            "first_due_date": "2026-04-05",
+            "admission_application_id": ficha_id,
+            "life_record_notes": life_record_desc,
+        },
+    )
+    assert res_init_mat.status_code in (200, 201)
+    mat_data = res_init_mat.json()["data"]
+    assert mat_data["status"] in ("CONTRACT_SENT", "CONTRATO_ENVIADO_CORREO")
+    assert mat_data["removed_from_interviews_list"] is True
+    assert mat_data["life_record_notes"] == life_record_desc
+    enrolled_student_id = mat_data["student_id"]
+
+    # Verificar que al enviar el correo de matrícula desapareció del Listado de Entrevistas
+    res_int_after_mat = client.get("/api/v1/academic/coordinator/interviews", headers=headers)
+    assert res_int_after_mat.status_code == 200
+    assert not any(item["id"] == ficha_id for item in res_int_after_mat.json()["data"]["interviews"])
+
+    # Verificar que fue agregada al panel de Nómina de Matriculados (enrollments y matriculas/report)
+    res_enrollments = client.get("/api/v1/academic/coordinator/enrollments", headers=headers)
+    assert res_enrollments.status_code == 200
+    enrolled_row = next((s for s in res_enrollments.json()["data"] if s["student_id"] == enrolled_student_id), None)
+    assert enrolled_row is not None
+    assert enrolled_row["email"] == "francisca.portal@sanbao.cl"
+    assert life_record_desc in (enrolled_row["life_record_summary"]["latest_observation"] or "")
+
+    res_matriculas_nomina = client.get("/api/v1/academic/coordinator/matriculas/report", headers=headers)
+    assert res_matriculas_nomina.status_code == 200
+    assert any(s["student_id"] == enrolled_student_id for s in res_matriculas_nomina.json()["data"]["items"])
+
+    # Verificar que la descripción quedó registrada en la Hoja de Vida del alumno
+    res_life_record = client.get(f"/api/v1/academic/coordinator/students/{enrolled_student_id}/life-record", headers=headers)
+    assert res_life_record.status_code == 200
+    lr_entries = res_life_record.json()["data"]["life_record_entries"]
+    assert any(life_record_desc in entry["description"] for entry in lr_entries)
+
 
 
 

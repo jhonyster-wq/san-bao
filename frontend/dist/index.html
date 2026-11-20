@@ -33024,25 +33024,25 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
   <!-- ======================================================================= -->
   <!-- PANTALLA / PORTAL DE INGRESO ÚNICO INTEGRAL & COMPACTO (SSO SAN BAO)    -->
   <!-- ======================================================================= -->
-  <div id="sso-login-overlay" class="fixed inset-0 bg-gradient-to-br from-[#071326]/95 via-[#0C1D36]/92 to-[#142F5A]/95 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-white/20 overflow-hidden flex flex-col my-auto relative">
+  <div id="sso-login-overlay" class="fixed inset-0 bg-gradient-to-br from-[#F0F7FF]/95 via-[#E6F1FE]/95 to-[#F5F9FF]/95 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div class="bg-white rounded-3xl max-w-md w-full shadow-[0_20px_50px_rgba(37,99,235,0.12)] border border-sky-100 overflow-hidden flex flex-col my-auto relative">
 
-      <!-- 1. ARRIBA: LOGO Y DESCRIPCIÓN (Fraseo Oficial: Jing • Qi • Shen) -->
-      <div class="bg-gradient-to-br from-[#0A182E] via-[#0F2447] to-[#1A56B2] text-white px-6 py-6 relative overflow-hidden text-center">
-        <div class="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-[#D4AF37] via-amber-200 to-[#D4AF37]"></div>
+      <!-- 1. ARRIBA: LOGO Y DESCRIPCIÓN (Fraseo Oficial: Jing • Qi • Shen — Paleta Clara y Amable) -->
+      <div class="bg-gradient-to-br from-[#EBF4FF] via-[#F2F8FF] to-[#E0EEFF] text-slate-800 px-6 py-6 relative overflow-hidden text-center border-b border-sky-100/80">
+        <div class="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-[#38BDF8] via-[#3988DB] to-[#60A5FA]"></div>
 
         <div class="flex flex-col items-center space-y-2.5 relative z-10">
-          <div class="w-16 h-16 bg-white rounded-2xl p-2 flex items-center justify-center shadow-xl border-2 border-[#D4AF37]/80">
+          <div class="w-16 h-16 bg-white rounded-2xl p-2 flex items-center justify-center shadow-md border border-sky-200/90">
             <img src="/static/img/logo_sanbao.png" alt="San Bao - Medicina China Clásica" class="h-full w-full object-contain" />
           </div>
-          <span class="inline-block px-3 py-0.5 rounded-full bg-white/10 border border-[#D4AF37]/40 text-[11px] text-amber-200 font-mono tracking-widest">
+          <span class="inline-block px-3.5 py-0.5 rounded-full bg-white/90 border border-sky-200 text-[11px] text-[#1A56B2] font-mono font-semibold tracking-widest shadow-2xs">
             三寶 • 精 Jing • 氣 Qi • 神 Shen
           </span>
           <div>
-            <h1 class="brand-serif font-extrabold text-xl tracking-wider text-white leading-tight">SAN BAO</h1>
-            <p class="text-xs text-blue-100 font-medium mt-0.5">Medicina China Clásica</p>
+            <h1 class="brand-serif font-extrabold text-xl tracking-wider text-[#142B46] leading-tight">SAN BAO</h1>
+            <p class="text-xs text-[#2563EB] font-semibold mt-0.5">Medicina China Clásica</p>
           </div>
-          <p class="text-[11px] text-blue-100/90 leading-relaxed max-w-xs">
+          <p class="text-[11px] text-slate-600 leading-relaxed max-w-xs">
             Te damos la bienvenida a tu espacio integral. Ingresa tus credenciales para acceder directamente a tu portal.
           </p>
         </div>
@@ -33052,11 +33052,11 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
       <div class="p-6 bg-white space-y-4">
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-base font-extrabold text-[#0C1D36]">Iniciar Sesión</h2>
+            <h2 class="text-base font-extrabold text-slate-800">Iniciar Sesión</h2>
             <p class="text-[11px] text-slate-500">Ingresa tu RUT o correo electrónico registrado.</p>
           </div>
-          <span class="px-2.5 py-0.5 rounded-full bg-[#EBF2FC] text-[#1A56B2] font-bold text-[10px]">
-            Acceso Seguro
+          <span class="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 font-bold text-[10px]">
+            🌿 Acceso Seguro
           </span>
         </div>
 
@@ -33071,14 +33071,14 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
               RUT o Correo Electrónico
             </label>
             <div class="relative flex items-center">
-              <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">👤</span>
+              <span class="absolute left-3.5 text-sky-500 text-sm pointer-events-none">👤</span>
               <input
                 id="sso-login-identifier"
                 type="text"
                 required
                 value="admin@sanbao.cl"
                 placeholder="Ej: 19.876.543-0 o nombre@sanbao.cl"
-                class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-[#0C1D36] font-semibold border border-slate-200 focus:border-[#1A56B2] focus:ring-3 focus:ring-blue-500/10 focus:outline-none transition-all"
+                class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-slate-800 font-semibold border border-slate-200 focus:border-[#3988DB] focus:ring-3 focus:ring-sky-500/15 focus:outline-none transition-all"
               />
             </div>
           </div>
@@ -33089,24 +33089,24 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
                 Contraseña
               </label>
               <span class="text-[10px] text-slate-400">
-                Clave: <code class="font-mono font-bold text-[#1A56B2] bg-blue-50 px-1.5 py-0.5 rounded">SanBao#2026</code>
+                Clave: <code class="font-mono font-bold text-[#1A56B2] bg-sky-50 border border-sky-100 px-1.5 py-0.5 rounded">SanBao#2026</code>
               </span>
             </div>
             <div class="relative flex items-center">
-              <span class="absolute left-3.5 text-slate-400 text-sm pointer-events-none">🔑</span>
+              <span class="absolute left-3.5 text-sky-500 text-sm pointer-events-none">🔑</span>
               <input
                 id="sso-login-password"
                 type="password"
                 required
                 value="SanBao#2026"
                 placeholder="Ingresa tu contraseña"
-                class="w-full pl-10 pr-24 py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-[#0C1D36] font-mono font-bold border border-slate-200 focus:border-[#1A56B2] focus:ring-3 focus:ring-blue-500/10 focus:outline-none transition-all"
+                class="w-full pl-10 pr-24 py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-white focus:bg-white text-slate-800 font-mono font-bold border border-slate-200 focus:border-[#3988DB] focus:ring-3 focus:ring-sky-500/15 focus:outline-none transition-all"
               />
               <button
                 type="button"
                 id="sso-toggle-pass-btn"
                 onclick="toggleSsoPasswordVisibility()"
-                class="absolute right-2 px-2 py-1 rounded-lg text-[10px] font-semibold text-slate-500 hover:text-[#1A56B2] hover:bg-slate-100 transition cursor-pointer"
+                class="absolute right-2 px-2 py-1 rounded-lg text-[10px] font-semibold text-slate-500 hover:text-[#1A56B2] hover:bg-sky-50 transition cursor-pointer"
               >
                 👁️ Mostrar
               </button>
@@ -33114,7 +33114,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
           </div>
 
           <label class="flex items-center gap-2 pt-0.5 cursor-pointer select-none text-[11px] text-slate-600 hover:text-slate-800">
-            <input id="sso-strict-role-filter" type="checkbox" checked class="w-3.5 h-3.5 rounded border-slate-300 accent-[#1A56B2]" />
+            <input id="sso-strict-role-filter" type="checkbox" checked class="w-3.5 h-3.5 rounded border-slate-300 accent-[#2563EB]" />
             <span>Abrir directamente mi portal asignado según mi perfil</span>
           </label>
 
@@ -33122,7 +33122,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
 
           <button
             type="submit"
-            class="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-[#0C1D36] via-[#143870] to-[#1A56B2] hover:from-[#15458F] hover:to-[#1A56B2] text-white font-bold text-xs shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+            class="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-[#2563EB] via-[#3988DB] to-[#3B82F6] hover:from-[#1D4ED8] hover:to-[#2563EB] text-white font-bold text-xs shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
           >
             <span>Ingresar a mi Portal San Bao</span>
             <span class="text-sm leading-none">→</span>
@@ -33131,20 +33131,20 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
       </div>
 
       <!-- 3. ABAJO: ACCESO RÁPIDO DESARROLLO -->
-      <div class="px-6 pb-6 pt-4 bg-[#F8FAFC] border-t border-slate-200/90 space-y-2">
+      <div class="px-6 pb-6 pt-4 bg-[#F4F8FD] border-t border-sky-100 space-y-2">
         <div class="flex items-center justify-between gap-2">
           <label for="sso-dev-profile-combobox" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-[#1A56B2]"></span>
+            <span class="w-2 h-2 rounded-full bg-[#3988DB]"></span>
             <span>🛠️ Acceso Rápido Desarrollo (Perfiles y Portales)</span>
           </label>
-          <span class="text-[10px] font-semibold text-slate-400">1 clic</span>
+          <span class="text-[10px] font-semibold text-sky-600 bg-sky-100/80 px-2 py-0.5 rounded-full">1 clic</span>
         </div>
 
         <div class="flex items-center gap-2">
           <select
             id="sso-dev-profile-combobox"
             onchange="onSsoDevComboboxChange(this.value)"
-            class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white border border-slate-300 hover:border-[#1A56B2] focus:border-[#1A56B2] focus:outline-none text-xs font-bold text-[#0C1D36] shadow-2xs cursor-pointer"
+            class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white border border-sky-200 hover:border-[#3988DB] focus:border-[#3988DB] focus:outline-none text-xs font-bold text-slate-800 shadow-2xs cursor-pointer"
           >
             <option value="">— Selecciona un Perfil / Portal —</option>
             <optgroup label="Portal Administrativo &amp; Dirección">

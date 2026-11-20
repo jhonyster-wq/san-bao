@@ -289,3 +289,64 @@ class ClinicalShiftClosureAffectedPatient(Base, AuditMixin):
     campus = relationship("Campus")
 
 
+class SanitaryClosureChecklist(Base, AuditMixin):
+    """
+    Checklist Obligatorio de Cierre Sanitario (Requerimiento D.3 - Decreto 6/2009 REAS):
+    El tutor debe confirmar el cumplimiento del procedimiento de disposición de residuos cortopunzantes
+    y demás controles definidos por San Bao. No se permite el cierre definitivo cuando falten controles obligatorios.
+    Mantiene trazabilidad de quién realizó la confirmación y cuándo.
+    """
+
+    __tablename__ = "sanitary_closure_logs"
+    __table_args__ = (
+        Index("ix_sanitary_closure_company_date", "company_id", "confirmed_at"),
+        {"schema": "clinical"},
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey("core.companies.id", ondelete="RESTRICT"), nullable=False, index=True)
+    encounter_id = Column(String(36), ForeignKey("clinical.encounters.id", ondelete="SET NULL"), nullable=True, index=True)
+    shift_id = Column(String(36), ForeignKey("clinical.clinical_shift_schedules.id", ondelete="SET NULL"), nullable=True, index=True)
+    tutor_id = Column(String(36), ForeignKey("clinical.practitioners.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Controles sanitarios obligatorios San Bao / REAS
+    sharps_disposal_verified = Column(Boolean, default=False, nullable=False, comment="Disposición de residuos cortopunzantes en contenedor REAS")
+    complete_needle_removal_verified = Column(Boolean, default=False, nullable=False, comment="Verificación de retiro total de agujas en el paciente")
+    box_and_stretcher_sanitized = Column(Boolean, default=False, nullable=False, comment="Sanitización de box clínico y camilla")
+    moxa_and_equipment_secured = Column(Boolean, default=False, nullable=False, comment="Apagado de moxa, ventilación y control de equipos")
+    all_mandatory_checks_passed = Column(Boolean, default=False, nullable=False)
+
+    # Trazabilidad de quién realizó la confirmación y cuándo
+    confirmed_by_user_id = Column(String(36), nullable=False, index=True)
+    confirmed_by_name = Column(String(150), nullable=False)
+    confirmed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    notes = Column(Text, nullable=True)
+
+
+class MonthlyClinicalClosureReport(Base, AuditMixin):
+    """
+    Reporte Automático de Cierre Mensual Clínico (Requerimiento D.5):
+    Desglosa por período, modalidad (Primera sesión, Sesión única, Packs) y tipo de sesión
+    (Acupuntura, Tuina, Otras prestaciones configuradas), mostrando cantidad de atenciones y total recaudado.
+    Se recalcula automáticamente el primer día de cada mes y queda disponible para Dirección Clínica.
+    """
+
+    __tablename__ = "monthly_clinical_closures"
+    __table_args__ = (
+        Index("ix_monthly_clinical_closure_company_period", "company_id", "period_code"),
+        {"schema": "clinical"},
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey("core.companies.id", ondelete="RESTRICT"), nullable=False, index=True)
+    period_code = Column(String(20), nullable=False, index=True, comment="Período YYYY-MM ej: 2026-11")
+    total_attentions = Column(Integer, default=0, nullable=False)
+    total_collected_clp = Column(Numeric(14, 0), default=0, nullable=False)
+    by_modality_json = Column(Text, nullable=False, comment="JSON desglosado por PRIMERA_SESION, SESION_UNICA, PACKS")
+    by_service_type_json = Column(Text, nullable=False, comment="JSON desglosado por ACUPUNTURA, TUI_NA, OTRAS")
+    cross_matrix_json = Column(Text, nullable=False, comment="Matriz cruzada modalidad x prestación")
+    auto_recalculated_day_1 = Column(Boolean, default=True, nullable=False)
+    calculated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+

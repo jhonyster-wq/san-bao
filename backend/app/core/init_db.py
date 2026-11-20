@@ -146,6 +146,209 @@ def _migrate_sqlite_columns(target_engine) -> None:
             if "course_id" not in existing_eval_cols:
                 conn.exec_driver_sql("ALTER TABLE evaluations ADD COLUMN course_id VARCHAR(36)")
                 logger.info("Columna course_id agregada a evaluations.")
+
+            # Fase 2: Centros de costo obligatorios en obligaciones, pagos, CxP y remuneraciones/honorarios
+            cc_tables = [
+                ("payment_commitments", "CC-101 Docencia y Aranceles Escuela San Bao"),
+                ("payments", "CC-101 Docencia y Aranceles Escuela San Bao"),
+                ("accounts_payable", "CC-301 Administración Central Holding"),
+                ("hr_fee_receipts", "CC-101 Docencia y Aranceles Escuela San Bao"),
+                ("hr_payrolls", "CC-101 Docencia y Aranceles Escuela San Bao"),
+            ]
+            for tbl_name, default_cc in cc_tables:
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                if "cost_center_id" not in existing_tbl_cols:
+                    conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN cost_center_id VARCHAR(36)")
+                if "cost_center" not in existing_tbl_cols:
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE {tbl_name} ADD COLUMN cost_center VARCHAR(120) DEFAULT '{default_cc}'"
+                    )
+
+            # Fase 3: Gestión Académica Avanzada y Puente Clínico-Académico
+            fase3_alters = {
+                "programs": [
+                    ("requires_interview", "BOOLEAN DEFAULT 1"),
+                    ("min_attendance_pct", "NUMERIC(5,2) DEFAULT 75.0"),
+                    ("min_passing_grade", "NUMERIC(3,1) DEFAULT 4.0"),
+                    ("requires_grade_for_approval", "BOOLEAN DEFAULT 1"),
+                    ("auto_issue_diploma", "BOOLEAN DEFAULT 1"),
+                    ("practice_max_months", "INTEGER DEFAULT 6"),
+                ],
+                "courses": [
+                    ("min_attendance_pct", "NUMERIC(5,2) DEFAULT 75.0"),
+                    ("min_passing_grade", "NUMERIC(3,1) DEFAULT 4.0"),
+                    ("requires_grade_for_approval", "BOOLEAN DEFAULT 1"),
+                    ("auto_issue_diploma", "BOOLEAN DEFAULT 0"),
+                ],
+                "students": [
+                    ("decreto_313_coverage_confirmed", "BOOLEAN DEFAULT 1"),
+                ],
+                "cohort_enrollments": [
+                    ("enrollment_type", "VARCHAR(40) DEFAULT 'REGULAR'"),
+                    ("valid_from", "DATE"),
+                    ("valid_until", "DATE"),
+                    ("origin_cohort_id", "VARCHAR(36)"),
+                    ("notes", "TEXT"),
+                ],
+                "student_course_transfers": [
+                    ("authorized_by", "VARCHAR(150) DEFAULT 'Coordinación Académica - Escuela San Bao'"),
+                    ("authorization_code", "VARCHAR(60)"),
+                    ("preserved_history_snapshot", "TEXT"),
+                ],
+                "clinical_practice_hours": [
+                    ("shift_id", "VARCHAR(36)"),
+                    ("specialty", "VARCHAR(100) DEFAULT 'ACUPUNTURA'"),
+                    ("idempotency_key", "VARCHAR(120)"),
+                    ("record_type", "VARCHAR(40) DEFAULT 'ACREDITACION_TURNO'"),
+                    ("parent_hour_id", "VARCHAR(36)"),
+                    ("adjusted_by_user_id", "VARCHAR(36)"),
+                    ("adjustment_reason", "VARCHAR(255)"),
+                    ("remuneration_accrued", "BOOLEAN DEFAULT 1"),
+                ],
+            }
+            for tbl_name, cols in fase3_alters.items():
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                for col_name, col_def in cols:
+                    if col_name not in existing_tbl_cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN {col_name} {col_def}")
+
+            # Fase 4: Gestor de Campo Clínico (D.1, D.2, D.3, D.4, D.5)
+            fase4_alters = {
+                "patients": [
+                    ("last_visit_date", "DATE"),
+                    ("retention_segment", "VARCHAR(30) DEFAULT 'ACTIVO'"),
+                    ("comm_consent_whatsapp", "BOOLEAN DEFAULT 1"),
+                    ("comm_consent_email", "BOOLEAN DEFAULT 1"),
+                    ("comm_opt_out", "BOOLEAN DEFAULT 0"),
+                    ("comm_opt_out_at", "VARCHAR(40)"),
+                ],
+                "appointments": [
+                    ("session_modality", "VARCHAR(40) DEFAULT 'SESION_UNICA'"),
+                    ("service_type", "VARCHAR(50) DEFAULT 'ACUPUNTURA'"),
+                    ("amount_paid_clp", "NUMERIC(12,0) DEFAULT 35000"),
+                    ("confirmed_at", "VARCHAR(40)"),
+                    ("reminder_48h_sent", "BOOLEAN DEFAULT 0"),
+                    ("reminder_24h_sent", "BOOLEAN DEFAULT 0"),
+                    ("cancellation_reason", "VARCHAR(255)"),
+                ],
+            }
+            for tbl_name, cols in fase4_alters.items():
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                for col_name, col_def in cols:
+                    if col_name not in existing_tbl_cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN {col_name} {col_def}")
+
+            # Fase 5: Finanzas, Tesorería Dual, Compras, Conciliación 3 Vías, DTE SII y Honorarios Ley 21.133
+            fase5_alters = {
+                "installments": [
+                    ("exemption_type", "VARCHAR(40)"),
+                    ("exemption_reason", "VARCHAR(255)"),
+                    ("exemption_valid_from", "DATE"),
+                    ("exemption_valid_until", "DATE"),
+                    ("exemption_authorized_by", "VARCHAR(150)"),
+                ],
+                "payments": [
+                    ("is_reversed", "BOOLEAN DEFAULT 0"),
+                ],
+                "accounts_payable": [
+                    ("purchase_order_id", "VARCHAR(36)"),
+                ],
+                "hr_fee_receipts": [
+                    ("academic_hours", "NUMERIC(6,2) DEFAULT 0.00"),
+                    ("clinical_hours", "NUMERIC(6,2) DEFAULT 0.00"),
+                    ("hourly_rate", "NUMERIC(12,2) DEFAULT 0.00"),
+                ],
+                "dte_documents": [
+                    ("source_operation_key", "VARCHAR(120)"),
+                    ("tax_classification_code", "VARCHAR(60)"),
+                    ("contingency_mode", "BOOLEAN DEFAULT 0"),
+                    ("retry_count", "INTEGER DEFAULT 0"),
+                    ("rejection_reason", "VARCHAR(255)"),
+                    ("related_dte_id", "VARCHAR(36)"),
+                ],
+            }
+            for tbl_name, cols in fase5_alters.items():
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                for col_name, col_def in cols:
+                    if col_name not in existing_tbl_cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN {col_name} {col_def}")
+
+            # Fase 6: Firma Digital Transversal de Contratos y Pagarés (Requerimiento I)
+            fase6_alters = {
+                "legal_documents": [
+                    ("onboarding_id", "VARCHAR(36)"),
+                    ("is_mandatory_for_enrollment", "BOOLEAN DEFAULT 1"),
+                    ("provider_name", "VARCHAR(80) DEFAULT 'GENERIC_REST_ESIGN_PROVIDER'"),
+                    ("provider_envelope_id", "VARCHAR(120)"),
+                    ("signer_rut", "VARCHAR(20)"),
+                    ("signer_name", "VARCHAR(200)"),
+                    ("timestamp_seal", "VARCHAR(140)"),
+                    ("signature_evidence_json", "TEXT"),
+                    ("events_history_json", "TEXT"),
+                    ("archived_document_uri", "VARCHAR(500)"),
+                ],
+                "student_onboardings": [
+                    ("promissory_note_document_id", "VARCHAR(36)"),
+                    ("promissory_note_code", "VARCHAR(60)"),
+                    ("enrollment_regularized", "BOOLEAN DEFAULT 0"),
+                ],
+            }
+            for tbl_name, cols in fase6_alters.items():
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                for col_name, col_def in cols:
+                    if col_name not in existing_tbl_cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN {col_name} {col_def}")
+
+            # Fase 7: Capa de Integración Transaccional y Bloqueo Transversal (Requerimientos J y K)
+            fase7_alters = {
+                "operation_logs": [
+                    ("idempotency_key", "VARCHAR(120)"),
+                    ("backoff_seconds", "INTEGER DEFAULT 0"),
+                    ("next_retry_at", "VARCHAR(40)"),
+                    ("dead_letter_queued", "BOOLEAN DEFAULT 0"),
+                    ("error_alert_sent", "BOOLEAN DEFAULT 0"),
+                    ("payload_json", "TEXT"),
+                ],
+            }
+            for tbl_name, cols in fase7_alters.items():
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                for col_name, col_def in cols:
+                    if col_name not in existing_tbl_cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN {col_name} {col_def}")
+
+            # Fase 8: BI Avanzado, Cifrado AES-256 y Conservación 15 años de Fichas Clínicas (Requerimientos L y M)
+            fase8_alters = {
+                "encounters": [
+                    ("encrypted_sensitive_payload", "TEXT"),
+                    ("retention_until_date", "DATE"),
+                ],
+            }
+            for tbl_name, cols in fase8_alters.items():
+                res_tbl = conn.exec_driver_sql(f"PRAGMA table_info({tbl_name})").fetchall()
+                if not res_tbl:
+                    continue
+                existing_tbl_cols = {row[1] for row in res_tbl}
+                for col_name, col_def in cols:
+                    if col_name not in existing_tbl_cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {tbl_name} ADD COLUMN {col_name} {col_def}")
         except Exception as e:
             logger.debug(f"Aviso en migración SQLite: {e}")
 

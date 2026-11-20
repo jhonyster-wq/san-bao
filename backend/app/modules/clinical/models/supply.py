@@ -113,3 +113,30 @@ class ShiftSupplyItem(Base, AuditMixin):
 
     dispatch = relationship("ShiftSupplyDispatch", back_populates="items")
     supply = relationship("ClinicalSupply")
+
+
+class TutorSessionSupplyConsumption(Base, AuditMixin):
+    """
+    Control de Insumos por Tutor y Sesión Clínica (Requerimiento D.4):
+    Registra Tutor, Sesión, Código de Insumo, Cantidad y Fecha,
+    permitiendo calcular indicadores por tutor (Pacientes atendidos, Insumos consumidos, Consumo promedio por paciente).
+    """
+
+    __tablename__ = "tutor_supply_consumptions"
+    __table_args__ = {"schema": "clinical"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey("core.companies.id"), nullable=False, index=True)
+    tutor_id = Column(String(36), ForeignKey("clinical.practitioners.id"), nullable=False, index=True)
+    session_id = Column(String(36), nullable=False, index=True, comment="ID de la sesión clínica (encounter_id o appointment_id)")
+    patient_id = Column(String(36), ForeignKey("clinical.patients.id"), nullable=True, index=True)
+    supply_id = Column(String(36), ForeignKey("clinical.clinical_supplies.id"), nullable=True, index=True)
+    supply_code = Column(String(50), nullable=False, index=True, comment="Código del insumo clínico")
+    quantity = Column(Integer, nullable=False, default=1, comment="Cantidad consumida en la sesión")
+    consumption_date = Column(Date, default=date.today, nullable=False, index=True)
+    notes = Column(Text, nullable=True)
+
+    company = relationship("Company")
+    tutor = relationship("Practitioner")
+    supply = relationship("ClinicalSupply")
+

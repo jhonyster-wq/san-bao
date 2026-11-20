@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 horas
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Fase 8 (Requerimiento M): Gestión separada de claves para Cifrado AES-256 de campos sensibles y respaldos
+    FIELD_ENCRYPTION_KEY: str = "san_bao_separate_aes256_field_master_key_2026_clinical_vault"
+    BACKUP_ENCRYPTION_KEY: str = "san_bao_separate_aes256_backup_master_key_2026_drp"
+    MIN_TLS_VERSION: str = "TLSv1.2"
+    CLINICAL_RECORD_RETENTION_YEARS: int = 15
+
     # Base de datos (soporta SQLite embebido, PostgreSQL o MySQL en GoDaddy)
     DATABASE_URL: str = f"sqlite:///{_DEFAULT_SQLITE_PATH}"
     TEST_DATABASE_URL: str = "sqlite:///./test_sanbao.db"

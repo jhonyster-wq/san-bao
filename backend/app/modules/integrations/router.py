@@ -171,3 +171,155 @@ def verify_signature(
         from fastapi import HTTPException
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Firma electrónica no válida o no encontrada.")
     return sig
+
+
+# =============================================================================
+# FASE 6: FIRMA DIGITAL TRANSVERSAL DE CONTRATOS Y PAGARÉS (REQUERIMIENTO I)
+# =============================================================================
+@router.post("/signatures/enrollment-bundle", status_code=status.HTTP_201_CREATED, summary="I: Generar Contrato y Pagaré al matricular y enviarlos al proveedor genérico de firma")
+def generate_enrollment_signature_bundle(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.exceptions import EntityNotFoundException, SanBaoException
+
+    service = IntegrationsHubService(db)
+    try:
+        res = service.generate_and_dispatch_enrollment_documents(payload)
+        return APIResponse(
+            message="Contrato Educacional y Pagaré generados y enviados al proveedor de firma (matrícula pendiente de firmas obligatorias)",
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/signatures/documents/{document_id}/provider-callback", summary="I: Recibir confirmación/rechazo/vencimiento del proveedor de firma, validar evidencia, archivar y evaluar regularización")
+def process_provider_signature_callback(
+    document_id: str,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.exceptions import EntityNotFoundException, SanBaoException
+
+    service = IntegrationsHubService(db)
+    try:
+        res = service.process_provider_signature_callback(document_id, payload)
+        return APIResponse(
+            message=f"Documento {res['document_code']} actualizado a estado {res['status']}",
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/signatures/onboardings/{onboarding_id}/regularize", summary="I: Regularizar matrícula verificando que todos los documentos obligatorios (Contrato y Pagaré) estén FIRMADOS")
+def regularize_enrollment_after_signatures(
+    onboarding_id: str,
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.exceptions import EntityNotFoundException, SanBaoException
+
+    service = IntegrationsHubService(db)
+    try:
+        res = service.verify_or_regularize_enrollment_by_onboarding(onboarding_id)
+        return APIResponse(
+            message="Matrícula regularizada exitosamente tras verificar todas las firmas obligatorias",
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+# =============================================================================
+# FASE 7: CAPA DE INTEGRACIÓN TRANSACCIONAL (REQ. J) Y BLOQUEO TRANSVERSAL (REQ. K)
+# =============================================================================
+@router.get("/transactional-bus/events-catalog", summary="J: Catálogo oficial de los 12 eventos de negocio de la Capa de Integración Transaccional")
+def list_official_business_events():
+    return APIResponse(
+        message="Catálogo oficial de eventos de dominio (ERP Maestro de Identidad)",
+        data={"total": len(IntegrationsHubService.OFFICIAL_BUSINESS_EVENTS), "events": IntegrationsHubService.OFFICIAL_BUSINESS_EVENTS},
+    )
+
+
+@router.post("/transactional-bus/publish", summary="J: Publicar evento de negocio con idempotencia, backoff exponencial y Cola de Mensajes Fallidos (DLQ)")
+def publish_transactional_business_event(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    service = IntegrationsHubService(db)
+    res = service.publish_transactional_event(payload)
+    msg = (
+        "Evento duplicado interceptado por control de idempotencia"
+        if res["idempotent_replay"]
+        else f"Evento {res['event_name']} procesado con estado {res['status']}"
+    )
+    return APIResponse(message=msg, data=res)
+
+
+@router.post("/transactional-bus/dlq/{operation_id}/reprocess", summary="J: Reprocesar evento desde la Cola de Mensajes Fallidos (Dead Letter Queue)")
+def reprocess_dlq_operation(
+    operation_id: str,
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.exceptions import EntityNotFoundException
+
+    service = IntegrationsHubService(db)
+    try:
+        res = service.reprocess_dlq_operation(operation_id)
+        return APIResponse(message=f"Evento {res['operation_code']} reprocesado exitosamente desde DLQ", data=res)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.post("/restrictions/apply", status_code=status.HTTP_201_CREATED, summary="K: Aplicar restricción transversal registrando condición, fecha, responsable y notificación")
+def apply_transversal_restriction(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    service = IntegrationsHubService(db)
+    res = service.apply_transversal_restriction(payload)
+    return APIResponse(message="Restricción transversal aplicada y notificada", data=res)
+
+
+@router.post("/restrictions/{restriction_id}/authorize-exception", summary="K: Autorizar excepción con vigencia sobre restricción activa")
+def authorize_restriction_exception(
+    restriction_id: str,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.exceptions import EntityNotFoundException
+
+    service = IntegrationsHubService(db)
+    try:
+        res = service.authorize_restriction_exception(restriction_id, payload)
+        return APIResponse(message="Excepción autorizada y vigencia registrada", data=res)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.post("/restrictions/evaluate-access", summary="K: Evaluar permiso de acceso distinguiendo ámbito y garantizando continuidad de atención clínica de pacientes")
+def evaluate_transversal_access(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    service = IntegrationsHubService(db)
+    res = service.evaluate_transversal_access(payload)
+    return APIResponse(data=res)
+
+
+@router.post("/restrictions/auto-rehabilitate/{person_id}", summary="K: Rehabilitar automáticamente restricciones activas de una persona")
+def auto_rehabilitate_person_restrictions(
+    person_id: str,
+    db: Session = Depends(get_db),
+):
+    service = IntegrationsHubService(db)
+    res = service.rehabilitate_restrictions_for_person(person_id=person_id, reason="Rehabilitación automática por regularización de deuda")
+    return APIResponse(message="Restricciones rehabilitadas automáticamente", data=res)
+
+

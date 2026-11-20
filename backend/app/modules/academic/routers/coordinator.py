@@ -28,6 +28,16 @@ from app.modules.academic.schemas.coordinator import (
     AdmissionApplicationCreateRequest,
     ScheduleAdmissionInterviewRequest,
     EvaluateAdmissionInterviewRequest,
+    MultiCohortEnrollmentRequest,
+    AcademicIncidentCreateRequest,
+    AcademicIncidentUpdateByTeacherRequest,
+    AcademicIncidentModerateRequest,
+    CourseApprovalRulesUpdateRequest,
+    DirectShortCourseEnrollmentRequest,
+    TutorSemesterEvaluationCreateRequest,
+    StudentTutorEvaluationCreateRequest,
+    ClinicalShiftBridgeClosureRequest,
+    ClinicalPracticeHourAdjustmentRequest,
 )
 from app.shared.responses import APIResponse
 
@@ -711,6 +721,233 @@ def list_scheduled_interviews(
         search=search,
     )
     return APIResponse(data=data)
+
+
+# =============================================================================
+# 10. FASE 3: GESTIÓN ACADÉMICA AVANZADA Y PUENTE CLÍNICO-ACADÉMICO IDEMPOTENTE
+# =============================================================================
+@router.post("/students/{student_id}/cohort-enrollments", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="B.1: Inscribir alumno simultáneamente en doble cohorte, asignatura transitoria o recuperación con vigencia")
+def enroll_student_in_additional_cohort(
+    student_id: str,
+    payload: MultiCohortEnrollmentRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.enroll_student_in_additional_cohort(student_id, payload)
+        return APIResponse(message="Inscripción simultánea en cohorte/asignatura registrada exitosamente", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.get("/students/{student_id}/cohort-enrollments", response_model=APIResponse[List[Dict[str, Any]]], summary="B.1: Listar inscripciones de cohortes y asignaturas (regulares, transitorias y recuperación)")
+def list_student_cohort_enrollments(student_id: str, db: Session = Depends(get_db)):
+    service = AcademicCoordinatorService(db)
+    try:
+        items = service.list_student_cohort_enrollments(student_id)
+        return APIResponse(data=items)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.post("/incidents", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="B.3: Registrar incidencia académica por docente (queda en estado PENDIENTE_REVISION)")
+def create_academic_incident(
+    payload: AcademicIncidentCreateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.create_academic_incident(payload)
+        return APIResponse(message=f"Incidencia {res['incident_code']} registrada en estado PENDIENTE_REVISION", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.put("/incidents/{incident_id}/teacher-edit", response_model=APIResponse[Dict[str, Any]], summary="B.3: Editar incidencia académica por docente (bloqueado si ya fue validada)")
+def edit_academic_incident_by_teacher(
+    incident_id: str,
+    payload: AcademicIncidentUpdateByTeacherRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.update_academic_incident_by_teacher(incident_id, payload)
+        return APIResponse(message="Incidencia actualizada por docente", data=res)
+    except SanBaoException as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.message)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.put("/incidents/{incident_id}/moderate", response_model=APIResponse[Dict[str, Any]], summary="B.3: Revisar, validar, tipificar y publicar incidencia académica en el expediente")
+def moderate_academic_incident(
+    incident_id: str,
+    payload: AcademicIncidentModerateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.moderate_academic_incident(incident_id, payload)
+        return APIResponse(message=f"Incidencia {res['incident_code']} moderada con estado {res['status']}", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.get("/incidents", response_model=APIResponse[List[Dict[str, Any]]], summary="B.3: Listar incidencias académicas por alumno o estado de moderación")
+def list_academic_incidents(
+    student_id: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    items = service.list_academic_incidents(student_id=student_id, status_filter=status_filter)
+    return APIResponse(data=items)
+
+
+@router.put("/programs/{program_id}/approval-rules", response_model=APIResponse[Dict[str, Any]], summary="B.4 & B.5: Configurar si el programa/curso corto requiere entrevista y reglas de aprobación")
+def update_program_approval_rules(
+    program_id: str,
+    payload: CourseApprovalRulesUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.update_program_approval_rules(program_id, payload)
+        return APIResponse(message="Reglas de admisión y aprobación del programa actualizadas", data=res)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.put("/courses/{course_id}/approval-rules", response_model=APIResponse[Dict[str, Any]], summary="B.5: Configurar porcentaje de asistencia mínima, nota mínima y generación automática de diploma por curso")
+def update_course_approval_rules(
+    course_id: str,
+    payload: CourseApprovalRulesUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.update_course_approval_rules(course_id, payload)
+        return APIResponse(message="Reglas de aprobación de la asignatura actualizadas", data=res)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.post("/short-courses/direct-enroll", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="B.4: Inscripción simplificada directa en cursos cortos y seminarios que no requieren entrevista")
+def enroll_direct_short_course(
+    payload: DirectShortCourseEnrollmentRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.enroll_direct_short_course(payload)
+        return APIResponse(message="Inscripción directa simplificada realizada exitosamente", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/cohort-enrollments/{cohort_enrollment_id}/evaluate-approval", response_model=APIResponse[Dict[str, Any]], summary="B.5: Evaluar aprobación según asistencia/nota mínima parametrizada y generar diploma automático")
+def evaluate_cohort_enrollment_approval(
+    cohort_enrollment_id: str,
+    attendance_percentage: Optional[float] = Query(None),
+    final_grade: Optional[float] = Query(None),
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.evaluate_cohort_enrollment_approval(
+            cohort_enrollment_id=cohort_enrollment_id,
+            attendance_percentage=attendance_percentage,
+            final_grade=final_grade,
+        )
+        return APIResponse(message="Evaluación de aprobación y verificación de diploma completada", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.get("/students/{student_id}/training-history", response_model=APIResponse[Dict[str, Any]], summary="B.6: Historial integral de formación (diplomados, cursos cortos, seminarios, asignaturas transitorias y práctica)")
+def get_student_training_history(student_id: str, db: Session = Depends(get_db)):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.get_student_training_history(student_id)
+        return APIResponse(data=res)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+
+
+@router.post("/tutor-evaluations/tutor-to-student", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="B.7: Evaluación semestral del alumno por el tutor y registro de entrega de reportes clínicos")
+def create_tutor_semester_evaluation(
+    payload: TutorSemesterEvaluationCreateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.create_tutor_semester_evaluation(payload)
+        return APIResponse(message="Evaluación semestral y entrega de reportes clínicos registrada", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/tutor-evaluations/student-to-tutor", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="B.7: Evaluación confidencial del tutor por parte del alumno")
+def create_student_tutor_evaluation(
+    payload: StudentTutorEvaluationCreateRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.create_student_tutor_evaluation(payload)
+        return APIResponse(message="Evaluación confidencial al tutor registrada exitosamente", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.get("/tutor-evaluations/aggregated-report", response_model=APIResponse[Dict[str, Any]], summary="B.7: Reporte agregado y confidencial de evaluaciones de tutores (sin exponer identidad de alumnos)")
+def get_aggregated_tutor_evaluations_report(
+    period_code: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    res = service.get_aggregated_tutor_evaluations_report(period_code=period_code)
+    return APIResponse(data=res)
+
+
+@router.get("/practice-alerts", response_model=APIResponse[Dict[str, Any]], summary="B.8: Alertas automáticas para alumnos que superen tiempos estimados de práctica o presenten horas insuficientes")
+def get_clinical_practice_alerts(db: Session = Depends(get_db)):
+    service = AcademicCoordinatorService(db)
+    res = service.get_clinical_practice_alerts()
+    return APIResponse(data=res)
+
+
+@router.post("/clinical-bridge/close-session", response_model=APIResponse[Dict[str, Any]], summary="C: Puente Clínico-Académico Idempotente — Cierre de sesión/turno por tutor acredita horas acumulativas y devenga remuneración")
+def process_clinical_shift_closure_bridge(
+    payload: ClinicalShiftBridgeClosureRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.process_clinical_shift_closure_bridge(payload)
+        msg = (
+            "Evento duplicado detectado por clave de idempotencia: horas no duplicadas."
+            if res["idempotent_replay"]
+            else f"Cierre de sesión validado: +{res['hours_accredited_in_event']} hrs acumuladas (Total: {res['total_accumulated_hours']} hrs)."
+        )
+        return APIResponse(message=msg, data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/clinical-bridge/hours/{hour_id}/adjust", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="C: Registrar corrección de horas clínicas mediante ajuste auditable sin sobrescribir el registro original")
+def adjust_clinical_practice_hour_auditable(
+    hour_id: str,
+    payload: ClinicalPracticeHourAdjustmentRequest,
+    db: Session = Depends(get_db),
+):
+    service = AcademicCoordinatorService(db)
+    try:
+        res = service.adjust_clinical_practice_hour_auditable(hour_id, payload)
+        return APIResponse(message="Ajuste auditable de horas clínicas registrado sin modificar el registro original", data=res)
+    except (EntityNotFoundException, SanBaoException) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
 
 
 

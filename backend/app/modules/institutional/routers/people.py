@@ -1,5 +1,5 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -9,7 +9,41 @@ from app.modules.institutional.schemas.person import PersonCreate, PersonUpdate,
 from app.modules.institutional.services.person_service import PersonService
 from app.shared.responses import APIResponse, PaginatedResponse
 
-router = APIRouter(prefix="/people", tags=["Maestro de Personas"])
+router = APIRouter(prefix="/people", tags=["Maestro de Personas e Identidad Única"])
+
+
+@router.get("/identity/{rut}", response_model=APIResponse[Dict[str, Any]], summary="Fuente Maestra de Identidad 360 por RUT (Alumnos, Pacientes, Docentes, Tutores, Profesionales, Colaboradores, Proveedores)")
+def get_master_identity_by_rut(
+    rut: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Consulta la Fuente Maestra de Identidad del ERP por RUT chileno (validado con Módulo 11 y normalizado
+    sin puntos y con guion). Retorna el UUID único y todos los roles activos sin duplicar identidades.
+    """
+    service = PersonService(db)
+    try:
+        data = service.get_identity_360_by_rut(rut)
+        return APIResponse(data=data)
+    except InvalidRUTException as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message)
+
+
+@router.post("/upsert-identity", response_model=APIResponse[Dict[str, Any]], summary="Crear o enriquecer Identidad Maestra Única sin duplicar personas (incluye rol Proveedor)")
+def upsert_master_identity(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Crea o enriquece la identidad originada en el ERP (core.people) validando RUT con Módulo 11.
+    Permite que el Gestor Clínico o Finanzas consuman y enriquezcan la identidad sin generar registros paralelos.
+    """
+    service = PersonService(db)
+    try:
+        data = service.upsert_master_identity(payload)
+        return APIResponse(message="Identidad maestra sincronizada exitosamente", data=data)
+    except InvalidRUTException as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message)
 
 
 @router.get("", response_model=APIResponse[PaginatedResponse[PersonResponse]], summary="Listar y buscar personas")

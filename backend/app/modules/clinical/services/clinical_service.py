@@ -14,12 +14,64 @@ from app.modules.clinical.schemas.encounter import EncounterCreate, EncounterUpd
 from app.modules.academic.services.academic_service import AcademicService
 from app.modules.academic.schemas.evaluation import ClinicalPracticeHourCreate
 from app.modules.institutional.models.person import Person
-from app.core.exceptions import EntityNotFoundException, EntityAlreadyExistsException, SanBaoException
+from app.modules.institutional.models.user import User
+from app.modules.institutional.models.rbac import UserCompanyRole, Role, Permission
+from app.core.exceptions import EntityNotFoundException, EntityAlreadyExistsException, PermissionDeniedException, SanBaoException
 
 
 class ClinicalService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _assert_can_access_clinical_anamnesis(
+        self,
+        user_id: Optional[str],
+        patient_id: str,
+        encounter_id: Optional[str] = None,
+        ip: Optional[str] = None,
+        ua: Optional[str] = None,
+    ) -> None:
+        """
+        Verifica cumplimiento de la Matriz de Seguridad y Ley 20.584 (Requerimiento M):
+        El perfil ADMIN_FINANZAS tiene explícitamente prohibido el acceso a la anamnesis y ficha clínica.
+        """
+        if not user_id:
+            return
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or user.is_superuser:
+            return
+
+        user_roles = (
+            self.db.query(Role)
+            .join(UserCompanyRole, UserCompanyRole.role_id == Role.id)
+            .filter(
+                UserCompanyRole.user_id == user_id,
+                UserCompanyRole.is_active == True,
+                UserCompanyRole.deleted_at.is_(None),
+            )
+            .all()
+        )
+        role_codes = {r.code for r in user_roles}
+        has_clinical_read = any(
+            any(p.code == "clinical:records:read" for p in (r.permissions or []))
+            for r in user_roles
+        )
+        clinical_allowed_roles = {"TUTOR_CLINICO", "TERAPEUTA", "DIRECCION_CLINICA", "ALUMNO_PRACTICA", "SUPERADMIN"}
+
+        if ("ADMIN_FINANZAS" in role_codes or "FINANZAS" in role_codes) and not (
+            has_clinical_read or (role_codes & clinical_allowed_roles)
+        ):
+            self._log_access(
+                patient_id=patient_id,
+                encounter_id=encounter_id,
+                user_id=user_id,
+                action="DENIED_ANAMNESIS_ACCESS_FINANCE",
+                ip=ip,
+                ua=ua,
+            )
+            raise PermissionDeniedException(
+                "Acceso denegado (Ley 20.584 / Matriz RBAC): El rol ADMIN_FINANZAS no tiene acceso a la anamnesis ni ficha clínica."
+            )
 
     # --------------------------------------------------------------------------
     # Registro y Ficha de Pacientes
@@ -303,6 +355,21 @@ class ClinicalService:
         # Si interviene un alumno en práctica, inicia como borrador (DRAFT)
         initial_status = "DRAFT" if data.student_id else "VALIDATED"
 
+        import json as _json
+        from datetime import timedelta
+        from app.core.security import AES256FieldCipher
+
+        sensitive_snapshot = _json.dumps(
+            {
+                "reason_for_consultation": data.reason_for_consultation,
+                "current_illness_history": data.current_illness_history,
+                "zang_fu_syndrome": data.zang_fu_syndrome,
+            },
+            ensure_ascii=False,
+        )
+        encrypted_payload = AES256FieldCipher.encrypt(sensitive_snapshot)
+        retention_until = date.today().replace(year=date.today().year + 15)
+
         encounter = ClinicalEncounter(
             patient_id=data.patient_id,
             appointment_id=data.appointment_id,
@@ -319,6 +386,8 @@ class ClinicalService:
             treatment_plan=data.treatment_plan.model_dump() if data.treatment_plan else {},
             recommendations=data.recommendations,
             status=initial_status,
+            encrypted_sensitive_payload=encrypted_payload,
+            retention_until_date=retention_until,
         )
         self.db.add(encounter)
         self.db.commit()
@@ -339,6 +408,13 @@ class ClinicalService:
         if not encounter:
             raise EntityNotFoundException("Atención Clínica", encounter_id)
 
+        self._assert_can_access_clinical_anamnesis(
+            user_id=user_id,
+            patient_id=encounter.patient_id,
+            encounter_id=encounter.id,
+            ip=ip,
+            ua=ua,
+        )
         self._log_access(patient_id=encounter.patient_id, encounter_id=encounter.id, user_id=user_id, action="VIEW_ENCOUNTER", ip=ip, ua=ua)
         return encounter
 
@@ -435,3 +511,104 @@ class ClinicalService:
             .order_by(ClinicalAccessLog.created_at.desc())
             .all()
         )
+
+    def delete_encounter_respecting_15_year_retention(self, encounter_id: str, user_id: str) -> None:
+        """
+        Requerimiento M (Ley 20.584):
+        Para fichas clínicas, contempla conservación obligatoria por al menos 15 años.
+        Bloquea cualquier intento de eliminación antes de cumplirse los 15 años.
+        """
+        encounter = (
+            self.db.query(ClinicalEncounter)
+            .filter(ClinicalEncounter.id == encounter_id, ClinicalEncounter.deleted_at.is_(None))
+            .first()
+        )
+        if not encounter:
+            raise EntityNotFoundException("Atención Clínica", encounter_id)
+
+        enc_date = encounter.encounter_date.date() if isinstance(encounter.encounter_date, datetime) else date.today()
+        min_retention_until = encounter.retention_until_date or enc_date.replace(year=enc_date.year + 15)
+
+        if date.today() < min_retention_until:
+            self._log_access(
+                patient_id=encounter.patient_id,
+                encounter_id=encounter.id,
+                user_id=user_id,
+                action="BLOCKED_DELETE_15Y_RETENTION_LAW_20584",
+            )
+            raise PermissionDeniedException(
+                f"Conservación Legal Obligatoria (Ley 20.584 / Requerimiento M): Las fichas clínicas deben conservarse por al menos 15 años (protegida hasta {min_retention_until.isoformat()}). Eliminación prohibida."
+            )
+
+    def export_patient_clinical_record_portability(
+        self,
+        patient_id: str,
+        user_id: str,
+        ip: Optional[str] = None,
+        ua: Optional[str] = None,
+    ) -> dict:
+        """
+        Requerimiento M (Ley 20.584, Ley 19.628 y Ley 21.719):
+        Mecanismo de entrega y portabilidad de la ficha clínica para el paciente,
+        descifrando el respaldo AES-256 para usuario autorizado y registrando el evento en auditoría.
+        """
+        import hashlib
+        import json as _json
+        from app.core.security import AES256FieldCipher
+
+        patient = self.get_patient(patient_id=patient_id, user_id=user_id, ip=ip, ua=ua)
+        self._assert_can_access_clinical_anamnesis(user_id=user_id, patient_id=patient.id, ip=ip, ua=ua)
+
+        encounters = (
+            self.db.query(ClinicalEncounter)
+            .filter(ClinicalEncounter.patient_id == patient.id, ClinicalEncounter.deleted_at.is_(None))
+            .order_by(ClinicalEncounter.encounter_date.asc())
+            .all()
+        )
+        encounters_list = []
+        for enc in encounters:
+            enc_dt = enc.encounter_date.date() if isinstance(enc.encounter_date, datetime) else date.today()
+            ret_until = enc.retention_until_date or enc_dt.replace(year=enc_dt.year + 15)
+            decrypted_verified = False
+            if enc.encrypted_sensitive_payload:
+                try:
+                    dec_str = AES256FieldCipher.decrypt(enc.encrypted_sensitive_payload)
+                    decrypted_verified = len(dec_str) > 0
+                except Exception:
+                    decrypted_verified = False
+            encounters_list.append({
+                "encounter_id": enc.id,
+                "encounter_date": enc.encounter_date.isoformat() if enc.encounter_date else None,
+                "reason_for_consultation": enc.reason_for_consultation,
+                "zang_fu_syndrome": enc.zang_fu_syndrome,
+                "therapeutic_principle": enc.therapeutic_principle,
+                "recommendations": enc.recommendations,
+                "status": enc.status,
+                "aes256_encrypted_at_rest": bool(enc.encrypted_sensitive_payload),
+                "aes256_integrity_verified": decrypted_verified,
+                "minimum_retention_until": ret_until.isoformat(),
+                "retention_years_mandate": 15,
+            })
+
+        self._log_access(
+            patient_id=patient.id,
+            user_id=user_id,
+            action="EXPORT_PORTABILITY_LAW_20584",
+            ip=ip,
+            ua=ua,
+        )
+        payload_hash = hashlib.sha256(_json.dumps(encounters_list, sort_keys=True).encode("utf-8")).hexdigest()
+        return {
+            "portability_standard": "CL-MINSAL-LEY-20584-21719-PORTABLE-JSON-V1",
+            "patient_id": patient.id,
+            "record_number": patient.record_number,
+            "patient_rut": patient.person.rut if patient.person else "",
+            "patient_name": patient.person.full_name if patient.person else "Paciente",
+            "minimum_retention_years": 15,
+            "encryption_standard": "AES-256-GCM (Separate Key Management)",
+            "encounters_count": len(encounters_list),
+            "encounters": encounters_list,
+            "portability_package_sha256": payload_hash,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+        }
+

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Numeric, JSON, ForeignKey, Text
+from sqlalchemy import Column, String, Date, DateTime, Numeric, JSON, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.audit import AuditMixin
@@ -68,6 +68,10 @@ class ClinicalEncounter(Base, AuditMixin):
     status = Column(String(50), default="DRAFT", nullable=False, comment="DRAFT (borrador alumno), VALIDATED, SIGNED (firmada legalmente por profesional)")
     signed_at = Column(DateTime(timezone=True), nullable=True)
     signed_by = Column(String(36), ForeignKey("core.users.id"), nullable=True)
+
+    # 6. Fase 8 (Requerimiento M): Cifrado AES-256 de campos sensibles y Conservación legal por 15 años (Ley 20.584)
+    encrypted_sensitive_payload = Column(Text, nullable=True, comment="M: Anamnesis y diagnóstico sensible cifrado en AES-256-GCM con clave separada")
+    retention_until_date = Column(Date, nullable=True, comment="M: Fecha mínima de conservación obligatoria por al menos 15 años (Ley 20.584)")
 
     patient = relationship("Patient", back_populates="encounters")
     appointment = relationship("Appointment", back_populates="encounter")

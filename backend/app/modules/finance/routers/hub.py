@@ -228,6 +228,40 @@ def get_erp_financial_suite(
     return APIResponse(data=data)
 
 
+@router.get("/cost-centers", response_model=APIResponse[Dict[str, Any]], summary="Catálogo Maestro de Centros de Costo por Sociedad (Requerimiento E.6)")
+def list_cost_centers(
+    company_id: Optional[str] = Query(None, description="ID de la sociedad SpA"),
+    area_type: Optional[str] = Query(None, description="ACADEMICO, CLINICO, ADMINISTRATIVO, COMERCIAL"),
+    db: Session = Depends(get_db),
+):
+    from app.modules.finance.models.commitment import CostCenter
+
+    # Garantizar que los centros de costo maestros estén inicializados
+    service = FinanceHubService(db)
+    service.get_erp_financial_suite()
+
+    q = db.query(CostCenter).filter(CostCenter.is_active == True, CostCenter.deleted_at.is_(None))
+    if company_id:
+        q = q.filter(CostCenter.company_id == company_id)
+    if area_type:
+        q = q.filter(CostCenter.area_type == area_type.upper())
+    items = [
+        {
+            "id": cc.id,
+            "company_id": cc.company_id,
+            "code": cc.code,
+            "name": cc.name,
+            "area_type": cc.area_type,
+            "is_active": cc.is_active,
+        }
+        for cc in q.order_by(CostCenter.code.asc()).all()
+    ]
+    return APIResponse(
+        message="Catálogo Maestro de Centros de Costo por Sociedad",
+        data={"items": items, "total": len(items)},
+    )
+
+
 @router.post("/payables", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="Registrar nueva Cuenta por Pagar (CxP / Factura Proveedor / Arriendo / Previred / F29)")
 def create_payable(
     payload: Dict[str, Any],
@@ -306,4 +340,175 @@ def create_journal_entry(
         return APIResponse(message=f"Asiento contable {res['entry_number']} contabilizado en Libro Diario", data=res)
     except (EntityNotFoundException, SanBaoException, ValueError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# =============================================================================
+# 14. FASE 5: EXENCIONES, PACKS, REVERSOS, TESORERÍA DUAL, OC, CONCILIACIÓN 3 VÍAS, DTE Y HONORARIOS
+# =============================================================================
+@router.post("/installments/{installment_id}/apply-exemption", response_model=APIResponse[Dict[str, Any]], summary="E.1: Aplicar excepción de cobro académico (BECA, PRÁCTICA, CONGELAMIENTO) conservando el cargo original")
+def apply_academic_charge_exemption(
+    installment_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.apply_academic_charge_exemption(installment_id, payload)
+        return APIResponse(message=f"Excepción de cobro ({res['exemption_type']}) aplicada con estado EXENTO", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/clinical-packs", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="E.2: Registrar pack de sesiones clínicas (VIGENTE, AGOTADO, ANULADO) con centro de costo")
+def register_clinical_session_pack_finance(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.register_clinical_session_pack_finance(payload)
+        return APIResponse(message=f"Pack clínico registrado en estado {res['status']}", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.put("/clinical-packs/{pack_id}/status", response_model=APIResponse[Dict[str, Any]], summary="E.2: Consumir sesiones o anular pack clínico (VIGENTE -> AGOTADO / ANULADO)")
+def update_clinical_session_pack_status(
+    pack_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.update_clinical_session_pack_status(pack_id, payload)
+        return APIResponse(message=f"Estado del pack actualizado a {res['status']}", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/payments/{payment_id}/reverse", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="E.3: Generar reverso auditable asociado al pago original sin eliminar el pago")
+def reverse_payment_auditable(
+    payment_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.reverse_payment_auditable(payment_id, payload)
+        return APIResponse(message=f"Reverso {res['reversal_code']} registrado conservando el pago original", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/purchase-orders", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="E.4, E.5 y E.6: Emitir Orden de Compra imputada a centro de costo con control de compromiso y alerta de sobregiro")
+def create_purchase_order_with_cost_center(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.create_purchase_order_with_cost_center(payload)
+        return APIResponse(message=f"Orden de Compra {res['oc_number']} emitida e imputada a {res['cost_center']}", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/purchases", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="E.5: Registrar compra exigiendo Orden de Compra aprobada e imputada a centro de costo")
+def register_purchase_invoice_requiring_oc(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.register_purchase_invoice_requiring_oc(payload)
+        return APIResponse(message=f"Compra registrada y asociada a Orden de Compra {res['oc_number']}", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/reconciliation-3way/run", response_model=APIResponse[Dict[str, Any]], summary="F: Ejecutar conciliación bancaria automática de tres vías (Cartola <-> Pagos <-> Asientos Contables)")
+def run_three_way_bank_reconciliation(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.run_three_way_bank_reconciliation(payload)
+        return APIResponse(
+            message=f"Conciliación 3 vías ejecutada: {res['auto_reconciled_count']} conciliadas, {res['review_queue_count']} en cola de revisión",
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.get("/tax-classifications", response_model=APIResponse[Dict[str, Any]], summary="G: Listar matriz parametrizable de clasificaciones tributarias SII por sociedad")
+def list_tax_classifications(db: Session = Depends(get_db)):
+    service = FinanceHubService(db)
+    return APIResponse(data=service.list_or_upsert_tax_classifications())
+
+
+@router.post("/tax-classifications", response_model=APIResponse[Dict[str, Any]], summary="G: Configurar clasificación tributaria por sociedad y tipo de operación validada por Finanzas")
+def upsert_tax_classification(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    return APIResponse(message="Clasificación tributaria actualizada", data=service.list_or_upsert_tax_classifications(payload))
+
+
+@router.post("/dte/emit-controlled", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="G: Emitir DTE oficial con clasificación tributaria por sociedad y bloqueo de doble emisión por operación")
+def emit_controlled_dte_sii(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.emit_controlled_dte_sii(payload)
+        return APIResponse(message=f"DTE Tipo {res['dte_type']} Folio #{res['folio']} procesado", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.post("/dte/{dte_id}/retry-sii", response_model=APIResponse[Dict[str, Any]], summary="G: Reintentar envío al SII de DTE en contingencia")
+def retry_contingent_dte_sii(
+    dte_id: str,
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.retry_contingent_dte_sii(dte_id)
+        return APIResponse(message=f"Reintento SII exitoso para Folio #{res['folio']}", data=res)
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
+
+@router.put("/honorarios/retention-rates", response_model=APIResponse[Dict[str, Any]], summary="H: Configurar tasa de retención de honorarios por período según Ley 21.133")
+def upsert_retention_rate_for_period(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    res = service.upsert_retention_rate_for_period(
+        period_year=int(payload.get("period_year") or 2026),
+        retention_rate_pct=float(payload.get("retention_rate_pct") or 15.25),
+    )
+    return APIResponse(message="Tasa de retención Ley 21.133 configurada para el período", data=res)
+
+
+@router.post("/honorarios/liquidate-from-hours", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="H: Liquidar honorarios de docentes y tutores desde horas académicas y clínicas validadas según Ley 21.133")
+def liquidate_honorarios_from_validated_hours(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    service = FinanceHubService(db)
+    try:
+        res = service.liquidate_honorarios_from_validated_hours(payload)
+        return APIResponse(
+            message=f"Liquidación de honorarios {res['receipt_number']} calculada (Tasa Ley 21.133: {res['retention_rate_pct']}%)",
+            data=res,
+        )
+    except (EntityNotFoundException, SanBaoException, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=getattr(e, "message", str(e)))
+
 

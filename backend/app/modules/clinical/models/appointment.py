@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Date, Time, ForeignKey, Text, Index
+from sqlalchemy import Column, String, Boolean, Date, Time, Numeric, ForeignKey, Text, Index
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.audit import AuditMixin
@@ -31,6 +31,15 @@ class Appointment(Base, AuditMixin):
     reason = Column(String(255), nullable=True)
     notes = Column(Text, nullable=True)
     status = Column(String(50), default="SCHEDULED", nullable=False, comment="SCHEDULED, CONFIRMED, WAITING, IN_CONSULTATION, COMPLETED, CANCELLED, NO_SHOW")
+
+    # D.1 y D.5: Confirmación, recordatorios 48h/24h, modalidad y prestación para cierre mensual
+    session_modality = Column(String(40), default="SESION_UNICA", nullable=False, comment="D.5: PRIMERA_SESION, SESION_UNICA, PACK")
+    service_type = Column(String(50), default="ACUPUNTURA", nullable=False, comment="D.5: ACUPUNTURA, TUI_NA, FITOTERAPIA, OTRAS")
+    amount_paid_clp = Column(Numeric(12, 0), default=35000, nullable=False, comment="D.5: Monto recaudado en la sesión (CLP)")
+    confirmed_at = Column(String(40), nullable=True, comment="D.1: Fecha/hora de confirmación de atención")
+    reminder_48h_sent = Column(Boolean, default=False, nullable=False, comment="D.1: Recordatorio a 48 horas enviado")
+    reminder_24h_sent = Column(Boolean, default=False, nullable=False, comment="D.1: Recordatorio a 24 horas enviado")
+    cancellation_reason = Column(String(255), nullable=True, comment="D.1: Motivo de cancelación o reprogramación")
 
     company = relationship("Company")
     patient = relationship("Patient", back_populates="appointments")

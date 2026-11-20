@@ -335,3 +335,231 @@ def test_clinical_payment_request_to_finance_flow(client):
     found = next((x for x in items if x["id"] == req_id), None)
     assert found is not None
     assert found["status"] == "PAGADA"
+
+
+def test_fase4_clinical_field_manager_agenda_segmentation_reas_supplies_and_monthly_closure(client):
+    """
+    Fase 4:
+    - D.1: Agenda por sede/tutor/profesional, confirmaciones, recordatorios 48h y 24h, cancelaciones, NO_SHOW y respeto de consentimientos/Opt-Out.
+    - D.2: Segmentación automática semanal de pacientes (ACTIVO <=45d, EN_RIESGO 46-90d, INACTIVO >90d) y campaña de reactivación respetando consentimientos.
+    - D.3: Checklist obligatorio de Cierre Sanitario (Decreto 6/2009 REAS / cortopunzantes) con bloqueo si falta control obligatorio y trazabilidad.
+    - D.4: Control de insumos por tutor y sesión + KPIs (pacientes atendidos, insumos consumidos, consumo promedio por paciente).
+    - D.5: Cierre mensual clínico automático por período, modalidad (Primera sesión, Sesión única, Packs) y prestación (Acupuntura, Tuina, Otras).
+    """
+    token, clinica_id = get_auth_token_and_clinica(client)
+    headers = {"Authorization": f"Bearer {token}", "X-Company-ID": clinica_id}
+
+    patients = client.get("/api/v1/clinical/patients", headers=headers).json()["data"]["items"]
+    if not patients:
+        p_res = client.post(
+            "/api/v1/institutional/people",
+            headers=headers,
+            json={
+                "rut": "18.987.654-8",
+                "first_name": "Valentina",
+                "last_name": "Morales",
+                "email": "valentina.morales@sanbao.cl",
+                "phone": "+56 9 8899 1122",
+            },
+        )
+        person_id = p_res.json()["data"]["id"]
+        pat_res = client.post(
+            "/api/v1/clinical/patients",
+            headers=headers,
+            json={"person_id": person_id, "blood_type": "O+"},
+        )
+        patient_id = pat_res.json()["data"]["id"]
+    else:
+        patient_id = patients[0]["id"]
+
+    practitioners = client.get("/api/v1/clinical/practitioners", headers=headers).json()["data"]
+    if not practitioners:
+        pr_p_res = client.post(
+            "/api/v1/institutional/people",
+            headers=headers,
+            json={
+                "rut": "14.234.567-6",
+                "first_name": "Master",
+                "last_name": "Li",
+                "email": "master.li@sanbao.cl",
+            },
+        )
+        pr_res = client.post(
+            "/api/v1/clinical/practitioners",
+            headers=headers,
+            json={
+                "person_id": pr_p_res.json()["data"]["id"],
+                "license_number": "RNPI-887766-MINSAL",
+                "specialty": "Acupuntura",
+                "is_tutor": True,
+            },
+        )
+        practitioner_id = pr_res.json()["data"]["id"]
+    else:
+        practitioner_id = practitioners[0]["id"]
+
+    campuses = client.get("/api/v1/institutional/campuses", headers=headers).json()["data"]
+    campus_id = campuses[0]["id"]
+    rooms = campuses[0]["rooms"]
+    box_room = next((r for r in rooms if r["room_type"] == "CLINICAL_BOX"), rooms[0])
+
+    # Crear cita para pruebas de agenda, recordatorios y cierre mensual
+    appt_res = client.post(
+        "/api/v1/clinical/appointments",
+        headers=headers,
+        json={
+            "company_id": clinica_id,
+            "patient_id": patient_id,
+            "practitioner_id": practitioner_id,
+            "campus_id": campus_id,
+            "room_id": box_room["id"],
+            "appointment_date": "2026-11-18",
+            "start_time": "16:00",
+            "end_time": "17:00",
+            "reason": "Primera sesión de Acupuntura y Diagnóstico MTC",
+        },
+    )
+    assert appt_res.status_code == 201
+    appt_id = appt_res.json()["data"]["id"]
+
+    # D.1: Confirmar atención y asignar modalidad PRIMERA_SESION y prestación ACUPUNTURA
+    res_status = client.put(
+        f"/api/v1/clinical/management/appointments/{appt_id}/status-action",
+        headers=headers,
+        json={
+            "action": "CONFIRM",
+            "session_modality": "PRIMERA_SESION",
+            "service_type": "ACUPUNTURA",
+            "amount_paid_clp": 42000,
+        },
+    )
+    assert res_status.status_code == 200
+    assert res_status.json()["data"]["status"] == "CONFIRMED"
+    assert res_status.json()["data"]["session_modality"] == "PRIMERA_SESION"
+
+    # Enviar recordatorio a 48h y 24h con consentimiento activo
+    rem_48 = client.post(
+        f"/api/v1/clinical/management/appointments/{appt_id}/reminders",
+        headers=headers,
+        json={"window_hours": 48, "channel": "WHATSAPP"},
+    )
+    assert rem_48.status_code == 200
+    assert rem_48.json()["data"]["reminder_48h_sent"] is True
+
+    rem_24 = client.post(
+        f"/api/v1/clinical/management/appointments/{appt_id}/reminders",
+        headers=headers,
+        json={"window_hours": 24, "channel": "EMAIL_HTML"},
+    )
+    assert rem_24.status_code == 200
+    assert rem_24.json()["data"]["reminder_24h_sent"] is True
+
+    # Activar Opt-Out del paciente -> debe bloquear el envío de nuevos recordatorios
+    consent_res = client.put(
+        f"/api/v1/clinical/management/patients/{patient_id}/communication-consent",
+        headers=headers,
+        json={"comm_opt_out": True, "last_visit_date": "2026-09-10"},
+    )
+    assert consent_res.status_code == 200
+    assert consent_res.json()["data"]["comm_opt_out"] is True
+
+    rem_blocked = client.post(
+        f"/api/v1/clinical/management/appointments/{appt_id}/reminders",
+        headers=headers,
+        json={"window_hours": 24, "channel": "WHATSAPP"},
+    )
+    assert rem_blocked.status_code == 400
+
+    # D.2: Ejecutar segmentación semanal automática (paciente con última visita 2026-09-10 al 2026-11-18 = 69 días -> EN_RIESGO)
+    seg_res = client.post(
+        "/api/v1/clinical/management/patients/run-segmentation",
+        headers=headers,
+        json={"active_max_days": 45, "at_risk_max_days": 90, "reference_date": "2026-11-18"},
+    )
+    assert seg_res.status_code == 200
+    seg_patients = seg_res.json()["data"]["patients"]
+    target_pat_seg = next(p for p in seg_patients if p["patient_id"] == patient_id)
+    assert target_pat_seg["segment"] == "EN_RIESGO"
+    assert target_pat_seg["days_since_last_visit"] == 69
+
+    # Campaña de reactivación debe excluir al paciente con Opt-Out activo
+    camp_res = client.post(
+        "/api/v1/clinical/management/patients/reactivation-campaign",
+        headers=headers,
+        json={"target_segments": ["EN_RIESGO", "INACTIVO"], "channel": "WHATSAPP"},
+    )
+    assert camp_res.status_code == 200
+    assert any(p["patient_id"] == patient_id for p in camp_res.json()["data"]["excluded_patients"])
+
+    # D.3: Cierre Sanitario obligatorio (Decreto 6/2009 REAS / cortopunzantes)
+    # 1) Si falta confirmar disposición de cortopunzantes REAS -> bloqueado con 400
+    san_fail = client.post(
+        "/api/v1/clinical/management/sanitary-closure",
+        headers=headers,
+        json={
+            "tutor_id": practitioner_id,
+            "sharps_disposal_verified": False,
+            "complete_needle_removal_verified": True,
+            "box_and_stretcher_sanitized": True,
+            "confirmed_by_name": "Dr. Roberto Gómez Valdés",
+        },
+    )
+    assert san_fail.status_code == 400
+    assert "REAS" in san_fail.json()["detail"]
+
+    # 2) Con todos los controles obligatorios confirmados -> aprobado y trazado con usuario y timestamp
+    san_ok = client.post(
+        "/api/v1/clinical/management/sanitary-closure",
+        headers=headers,
+        json={
+            "tutor_id": practitioner_id,
+            "sharps_disposal_verified": True,
+            "complete_needle_removal_verified": True,
+            "box_and_stretcher_sanitized": True,
+            "moxa_and_equipment_secured": True,
+            "confirmed_by_name": "Dr. Roberto Gómez Valdés",
+            "notes": "Contenedor amarillo REAS sellado al 75% y box desinfectado.",
+        },
+    )
+    assert san_ok.status_code == 201
+    san_data = san_ok.json()["data"]
+    assert san_data["all_mandatory_checks_passed"] is True
+    assert san_data["confirmed_by_name"] == "Dr. Roberto Gómez Valdés"
+    assert san_data["confirmed_at"] is not None
+
+    # D.4: Control de insumos por tutor y sesión + indicadores por tutor
+    sup_res_1 = client.post(
+        "/api/v1/clinical/management/tutor-supplies/consume",
+        headers=headers,
+        json={
+            "tutor_id": practitioner_id,
+            "session_id": appt_id,
+            "patient_id": patient_id,
+            "supply_code": "AGU-2530",
+            "quantity": 12,
+            "consumption_date": "2026-11-18",
+        },
+    )
+    assert sup_res_1.status_code == 201
+
+    kpi_res = client.get(f"/api/v1/clinical/management/tutor-supplies/kpis?tutor_id={practitioner_id}", headers=headers)
+    assert kpi_res.status_code == 200
+    tutor_kpi = kpi_res.json()["data"]["tutors"][0]
+    assert tutor_kpi["patients_attended"] >= 1
+    assert tutor_kpi["supplies_consumed"] >= 12
+    assert tutor_kpi["average_consumption_per_patient"] > 0
+
+    # D.5: Reporte automático de Cierre Mensual Clínico por modalidad y prestación
+    closure_res = client.post(
+        "/api/v1/clinical/management/monthly-closure/calculate?period_code=2026-11",
+        headers=headers,
+    )
+    assert closure_res.status_code == 200
+    c_data = closure_res.json()["data"]
+    assert c_data["period_code"] == "2026-11"
+    assert c_data["auto_recalculate_schedule"] == "DAY_1_OF_EACH_MONTH"
+    assert c_data["total_attentions"] >= 1
+    assert c_data["total_collected_clp"] >= 42000.0
+    assert c_data["by_modality"]["PRIMERA_SESION"]["attentions_count"] >= 1
+    assert c_data["by_service_type"]["ACUPUNTURA"]["attentions_count"] >= 1
+

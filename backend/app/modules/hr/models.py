@@ -170,15 +170,20 @@ class HRFeeReceipt(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(String(36), ForeignKey("core.companies.id"), nullable=False, index=True)
     employee_id = Column(UUID(as_uuid=True), ForeignKey("hr.hr_employees.id"), nullable=False, index=True)
+    cost_center_id = Column(String(36), ForeignKey("finance.cost_centers.id", ondelete="SET NULL"), nullable=True, index=True)
+    cost_center = Column(String(120), default="CC-101 Docencia y Aranceles Escuela San Bao", nullable=False)
     receipt_number = Column(String(50), nullable=False, index=True)
     issue_date = Column(Date, nullable=False)
     period_month = Column(Integer, nullable=False)
     period_year = Column(Integer, nullable=False)
     description = Column(String(255), nullable=False)
 
-    # Valores tributarios chilenos
+    # Valores tributarios chilenos (Ley 21.133: Bruto = horas x valor hora, Retención = bruto x tasa vigente, Líquido = bruto - retención)
+    academic_hours = Column(Numeric(6, 2), default=0.00, nullable=False, comment="H: Horas académicas validadas en el período")
+    clinical_hours = Column(Numeric(6, 2), default=0.00, nullable=False, comment="H: Horas de tutoría/atención clínica validadas en el período")
+    hourly_rate = Column(Numeric(12, 2), default=0.00, nullable=False, comment="H: Valor hora aplicado")
     gross_amount = Column(Numeric(12, 2), nullable=False)
-    retention_rate = Column(Numeric(5, 2), default=13.75, nullable=False)  # 13.75% legal SII
+    retention_rate = Column(Numeric(5, 2), nullable=False, comment="H: Tasa de retención obtenida de hr.tax_retention_rates por período Ley 21.133")
     retention_amount = Column(Numeric(12, 2), nullable=False)
     net_amount = Column(Numeric(12, 2), nullable=False)
 
@@ -204,6 +209,8 @@ class HRPayroll(Base):
     company_id = Column(String(36), ForeignKey("core.companies.id"), nullable=False, index=True)
     employee_id = Column(UUID(as_uuid=True), ForeignKey("hr.hr_employees.id"), nullable=False, index=True)
     contract_id = Column(UUID(as_uuid=True), ForeignKey("hr.hr_contracts.id"), nullable=False)
+    cost_center_id = Column(String(36), ForeignKey("finance.cost_centers.id", ondelete="SET NULL"), nullable=True, index=True)
+    cost_center = Column(String(120), default="CC-101 Docencia y Aranceles Escuela San Bao", nullable=False)
     
     period_month = Column(Integer, nullable=False)
     period_year = Column(Integer, nullable=False)
@@ -285,4 +292,23 @@ class HRAttendanceRecord(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     employee = relationship("HREmployee", back_populates="attendance_records")
+
+
+class TaxRetentionRate(Base):
+    """
+    Tabla Parametrizable de Tasas de Retención de Boletas de Honorarios por Período según Ley 21.133 (Requerimiento H).
+    Evita dejar porcentajes legales fijos en el código.
+    """
+
+    __tablename__ = "tax_retention_rates"
+    __table_args__ = {"schema": "hr"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    period_year = Column(Integer, unique=True, nullable=False, index=True, comment="Año tributario ej: 2024, 2025, 2026, 2027, 2028")
+    retention_rate_pct = Column(Numeric(5, 2), nullable=False, comment="Tasa porcentual vigente según gradualidad Ley 21.133")
+    legal_reference = Column(String(200), default="Ley N° 21.133 - Cotizaciones Previsionales Honorarios SII", nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    updated_by = Column(String(150), default="Dirección de Finanzas & RRHH San Bao", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
 

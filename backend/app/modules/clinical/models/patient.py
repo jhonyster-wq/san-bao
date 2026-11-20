@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, JSON, ForeignKey, Text
+from sqlalchemy import Column, String, Boolean, Date, JSON, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.audit import AuditMixin
@@ -24,6 +24,15 @@ class Patient(Base, AuditMixin):
     allergies = Column(JSON, nullable=True, default=list, comment="Lista de alergias conocidas")
     chronic_conditions = Column(JSON, nullable=True, default=list, comment="Enfermedades crónicas o antecedentes mórbidos")
     general_notes = Column(Text, nullable=True)
+
+    # D.1 y D.2: Seguimiento de pacientes, segmentación y consentimientos de comunicación
+    last_visit_date = Column(Date, nullable=True, index=True, comment="D.2: Fecha de la última visita o atención clínica")
+    retention_segment = Column(String(30), default="ACTIVO", nullable=False, index=True, comment="D.2: ACTIVO (<=45d), EN_RIESGO (46-90d), INACTIVO (>90d)")
+    comm_consent_whatsapp = Column(Boolean, default=True, nullable=False, comment="D.1/D.2: Consentimiento de comunicaciones por WhatsApp")
+    comm_consent_email = Column(Boolean, default=True, nullable=False, comment="D.1/D.2: Consentimiento de comunicaciones por Email")
+    comm_opt_out = Column(Boolean, default=False, nullable=False, comment="D.1/D.2: Exclusión voluntaria de comunicaciones (Opt-Out)")
+    comm_opt_out_at = Column(String(40), nullable=True, comment="Fecha/hora de exclusión de comunicaciones")
+
     is_active = Column(Boolean, default=True, nullable=False)
 
     person = relationship("Person", foreign_keys=[person_id])

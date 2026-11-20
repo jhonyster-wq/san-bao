@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.core.exceptions import EntityNotFoundException, SanBaoException
+from app.core.exceptions import EntityNotFoundException, PermissionDeniedException, SanBaoException
 from app.modules.clinical.schemas.encounter import (
     EncounterCreate,
     EncounterUpdate,
@@ -51,6 +51,8 @@ def get_encounter(
         ua = request.headers.get("user-agent")
         encounter = service.get_encounter(encounter_id, user_id=current_user.id, ip=ip, ua=ua)
         return APIResponse(data=encounter)
+    except PermissionDeniedException as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.message)
     except EntityNotFoundException as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
 
@@ -99,3 +101,20 @@ def sign_encounter(
         return APIResponse(message="Atención médica firmada y horas acreditadas exitosamente", data=encounter)
     except (EntityNotFoundException, SanBaoException) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/{encounter_id}", summary="M: Intentar eliminar ficha de atención clínica (bloqueado por obligación legal de conservación de 15 años Ley 20.584)")
+def delete_encounter(
+    encounter_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = ClinicalService(db)
+    try:
+        service.delete_encounter_respecting_15_year_retention(encounter_id, user_id=current_user.id)
+        return APIResponse(message="Atención clínica eliminada")
+    except PermissionDeniedException as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.message)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+

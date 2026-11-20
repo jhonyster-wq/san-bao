@@ -11,6 +11,12 @@ from app.modules.finance.models.commitment import (
     FinanceTreasuryMovement,
     FinanceBudgetItem,
     FinanceJournalEntry,
+    PaymentReversal,
+    FinanceBankAccount,
+    FinancePurchaseOrder,
+    BankStatementLine,
+    ThreeWayReconciliationRecord,
+    TaxClassificationRule,
 )
 
 __all__ = [
@@ -26,4 +32,10 @@ __all__ = [
     "FinanceTreasuryMovement",
     "FinanceBudgetItem",
     "FinanceJournalEntry",
+    "PaymentReversal",
+    "FinanceBankAccount",
+    "FinancePurchaseOrder",
+    "BankStatementLine",
+    "ThreeWayReconciliationRecord",
+    "TaxClassificationRule",
 ]

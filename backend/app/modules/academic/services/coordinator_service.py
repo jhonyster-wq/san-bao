@@ -1172,18 +1172,43 @@ class AcademicCoordinatorService:
         from_program_id = current_enrollment.program_id if current_enrollment else target_program.id
         from_program = self.db.query(Program).filter(Program.id == from_program_id).first()
 
-        # Registrar historial de traspaso
+        # Snapshot del historial académico conservado antes del cambio de curso (B.2)
+        import json as _json
+        prev_cohorts = (
+            self.db.query(CohortEnrollment)
+            .filter(CohortEnrollment.student_id == st.id, CohortEnrollment.deleted_at.is_(None))
+            .all()
+        )
+        preserved_history = [
+            {
+                "cohort_enrollment_id": ce.id,
+                "cohort_id": ce.cohort_id,
+                "enrollment_type": getattr(ce, "enrollment_type", "REGULAR") or "REGULAR",
+                "final_grade": float(ce.final_grade) if ce.final_grade is not None else None,
+                "attendance_percentage": float(ce.attendance_percentage or 0.0),
+                "status": ce.status,
+            }
+            for ce in prev_cohorts
+        ]
+        transfer_count = self.db.query(StudentCourseTransfer).count() + 1
+        auth_code = getattr(data, "authorization_code", None) or f"AUT-TRASP-2026-{transfer_count:04d}"
+        auth_by = getattr(data, "authorized_by", None) or "Coordinación Académica - Escuela San Bao"
+
+        # Registrar historial de traspaso con trazabilidad de autorización
         transfer_log = StudentCourseTransfer(
             student_id=st.id,
             from_program_id=from_program_id,
             to_program_id=target_program.id,
             transfer_date=data.effective_date or date.today(),
             reason=data.reason,
+            authorized_by=auth_by,
+            authorization_code=auth_code,
+            preserved_history_snapshot=_json.dumps(preserved_history, ensure_ascii=False),
             notes=data.notes,
         )
         self.db.add(transfer_log)
 
-        # Actualizar o crear nueva matrícula
+        # Actualizar o crear nueva matrícula conservando las inscripciones históricas
         if current_enrollment:
             current_enrollment.program_id = target_program.id
             current_enrollment.enrollment_date = data.effective_date or date.today()
@@ -1211,6 +1236,10 @@ class AcademicCoordinatorService:
             "to_program_name": target_program.name,
             "transfer_date": (data.effective_date or date.today()).isoformat(),
             "reason": data.reason,
+            "authorized_by": auth_by,
+            "authorization_code": auth_code,
+            "preserved_academic_history_count": len(preserved_history),
+            "preserved_academic_history": preserved_history,
         }
 
     def list_student_transfers(self) -> List[Dict[str, Any]]:
@@ -1229,6 +1258,8 @@ class AcademicCoordinatorService:
                 "to_program_name": t.to_program.name if t.to_program else "N/A",
                 "transfer_date": t.transfer_date.isoformat(),
                 "reason": t.reason,
+                "authorized_by": getattr(t, "authorized_by", "Coordinación Académica - Escuela San Bao"),
+                "authorization_code": getattr(t, "authorization_code", None),
                 "notes": t.notes,
             })
         return data
@@ -5786,5 +5817,997 @@ class AcademicCoordinatorService:
         serialized = self._serialize_admission_application(app_obj)
         serialized["removed_from_interviews_list"] = bool(decision_norm == "MATRICULADO")
         return serialized
+
+    # =========================================================================
+    # FASE 3: GESTIÓN ACADÉMICA AVANZADA Y PUENTE CLÍNICO-ACADÉMICO IDEMPOTENTE
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # B.1. Doble Cohorte y Asignaturas Transitorias / Recuperación
+    # -------------------------------------------------------------------------
+    def enroll_student_in_additional_cohort(self, student_id: str, data: Any) -> Dict[str, Any]:
+        """
+        Permite que un alumno tenga inscripciones simultáneas en distintas cohortes o asignaturas
+        (REGULAR, TRANSITORIA, RECUPERACION), conservando historial y períodos de vigencia.
+        """
+        st = self.db.query(Student).filter(Student.id == student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", student_id)
+
+        cohort = self.db.query(Cohort).filter(Cohort.id == data.cohort_id, Cohort.deleted_at.is_(None)).first()
+        if not cohort:
+            raise EntityNotFoundException("Cohorte", data.cohort_id)
+
+        enr = (
+            self.db.query(Enrollment)
+            .filter(Enrollment.student_id == st.id, Enrollment.deleted_at.is_(None))
+            .order_by(desc(Enrollment.enrollment_date))
+            .first()
+        )
+        if not enr:
+            period = self.db.query(AcademicPeriod).filter(AcademicPeriod.is_active == True).first() or self.db.query(AcademicPeriod).first()
+            prog = self.db.query(Program).first()
+            enr = Enrollment(
+                student_id=st.id,
+                program_id=cohort.course.program_id if (cohort.course and cohort.course.program_id) else prog.id,
+                academic_period_id=cohort.academic_period_id or period.id,
+                enrollment_date=date.today(),
+                status="CONFIRMED",
+            )
+            self.db.add(enr)
+            self.db.flush()
+
+        enr_type = (data.enrollment_type or "TRANSITORIA").strip().upper()
+        if enr_type not in ("REGULAR", "TRANSITORIA", "RECUPERACION"):
+            enr_type = "TRANSITORIA"
+
+        existing_ce = (
+            self.db.query(CohortEnrollment)
+            .filter(
+                CohortEnrollment.student_id == st.id,
+                CohortEnrollment.cohort_id == cohort.id,
+                CohortEnrollment.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if existing_ce:
+            existing_ce.enrollment_type = enr_type
+            existing_ce.valid_from = data.valid_from or date.today()
+            existing_ce.valid_until = data.valid_until
+            existing_ce.origin_cohort_id = data.origin_cohort_id
+            existing_ce.notes = data.notes
+            existing_ce.status = "ENROLLED"
+            ce = existing_ce
+        else:
+            ce = CohortEnrollment(
+                enrollment_id=enr.id,
+                student_id=st.id,
+                cohort_id=cohort.id,
+                enrollment_type=enr_type,
+                valid_from=data.valid_from or date.today(),
+                valid_until=data.valid_until,
+                origin_cohort_id=data.origin_cohort_id,
+                notes=data.notes,
+                attendance_percentage=0.0,
+                status="ENROLLED",
+            )
+            self.db.add(ce)
+
+        self.db.commit()
+        self.db.refresh(ce)
+
+        all_ce = (
+            self.db.query(CohortEnrollment)
+            .filter(CohortEnrollment.student_id == st.id, CohortEnrollment.deleted_at.is_(None))
+            .all()
+        )
+        return {
+            "cohort_enrollment_id": ce.id,
+            "student_id": st.id,
+            "cohort_id": cohort.id,
+            "cohort_code": cohort.code,
+            "course_name": cohort.course.name if cohort.course else "Asignatura",
+            "enrollment_type": ce.enrollment_type,
+            "valid_from": ce.valid_from.isoformat() if ce.valid_from else None,
+            "valid_until": ce.valid_until.isoformat() if ce.valid_until else None,
+            "origin_cohort_id": ce.origin_cohort_id,
+            "status": ce.status,
+            "notes": ce.notes,
+            "total_simultaneous_cohorts": len(all_ce),
+        }
+
+    def list_student_cohort_enrollments(self, student_id: str) -> List[Dict[str, Any]]:
+        st = self.db.query(Student).filter(Student.id == student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", student_id)
+        items = (
+            self.db.query(CohortEnrollment)
+            .filter(CohortEnrollment.student_id == st.id, CohortEnrollment.deleted_at.is_(None))
+            .order_by(CohortEnrollment.created_at.asc())
+            .all()
+        )
+        result = []
+        for ce in items:
+            coh = ce.cohort
+            crs = coh.course if coh else None
+            result.append({
+                "cohort_enrollment_id": ce.id,
+                "student_id": ce.student_id,
+                "cohort_id": ce.cohort_id,
+                "cohort_code": coh.code if coh else "",
+                "course_id": crs.id if crs else None,
+                "course_name": crs.name if crs else "Asignatura",
+                "enrollment_type": getattr(ce, "enrollment_type", "REGULAR") or "REGULAR",
+                "valid_from": ce.valid_from.isoformat() if getattr(ce, "valid_from", None) else None,
+                "valid_until": ce.valid_until.isoformat() if getattr(ce, "valid_until", None) else None,
+                "origin_cohort_id": getattr(ce, "origin_cohort_id", None),
+                "final_grade": float(ce.final_grade) if ce.final_grade is not None else None,
+                "attendance_percentage": float(ce.attendance_percentage or 0.0),
+                "status": ce.status,
+                "notes": getattr(ce, "notes", None),
+            })
+        return result
+
+    # -------------------------------------------------------------------------
+    # B.3. Incidencias Académicas con Flujo de Revisión y Moderación
+    # -------------------------------------------------------------------------
+    def create_academic_incident(self, data: Any) -> Dict[str, Any]:
+        from app.modules.academic.models.student import AcademicIncident
+
+        st = self.db.query(Student).filter(Student.id == data.student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", data.student_id)
+
+        count = self.db.query(AcademicIncident).count() + 1
+        code = f"INC-2026-{count:04d}"
+        inc = AcademicIncident(
+            incident_code=code,
+            student_id=st.id,
+            cohort_id=data.cohort_id,
+            course_id=data.course_id,
+            reported_by_id=data.reported_by_id,
+            reported_by_name=data.reported_by_name,
+            incident_date=data.incident_date or date.today(),
+            title=data.title.strip(),
+            description=data.description.strip(),
+            category=(data.category or "ACADEMICA").strip().upper(),
+            severity=(data.severity or "MEDIA").strip().upper(),
+            status="PENDIENTE_REVISION",
+        )
+        self.db.add(inc)
+        self.db.commit()
+        self.db.refresh(inc)
+        return self._serialize_academic_incident(inc)
+
+    def update_academic_incident_by_teacher(self, incident_id: str, data: Any) -> Dict[str, Any]:
+        """
+        Regla B.3: El docente NO puede modificar directamente una incidencia ya validada.
+        """
+        from app.modules.academic.models.student import AcademicIncident
+
+        inc = (
+            self.db.query(AcademicIncident)
+            .filter(AcademicIncident.id == incident_id, AcademicIncident.deleted_at.is_(None))
+            .first()
+        )
+        if not inc:
+            raise EntityNotFoundException("Incidencia Académica", incident_id)
+
+        if inc.status != "PENDIENTE_REVISION":
+            raise SanBaoException(
+                "Regla de Moderación B.3: El docente no puede modificar directamente una incidencia académica que ya fue validada o procesada por Coordinación Académica."
+            )
+
+        if data.title is not None:
+            inc.title = data.title.strip()
+        if data.description is not None:
+            inc.description = data.description.strip()
+        self.db.commit()
+        self.db.refresh(inc)
+        return self._serialize_academic_incident(inc)
+
+    def moderate_academic_incident(self, incident_id: str, data: Any) -> Dict[str, Any]:
+        """
+        Coordinación Académica o Dirección revisa, valida, tipifica y publica la incidencia en el expediente.
+        """
+        from app.modules.academic.models.student import AcademicIncident
+
+        inc = (
+            self.db.query(AcademicIncident)
+            .filter(AcademicIncident.id == incident_id, AcademicIncident.deleted_at.is_(None))
+            .first()
+        )
+        if not inc:
+            raise EntityNotFoundException("Incidencia Académica", incident_id)
+
+        decision = (data.decision or "VALIDADA_PUBLICADA").strip().upper()
+        if decision not in ("VALIDADA_PUBLICADA", "RECHAZADA"):
+            decision = "VALIDADA_PUBLICADA"
+
+        if data.category:
+            inc.category = data.category.strip().upper()
+        if data.severity:
+            inc.severity = data.severity.strip().upper()
+
+        inc.status = decision
+        inc.reviewed_by_name = data.reviewed_by_name
+        inc.reviewed_at = datetime.now(timezone.utc).isoformat()
+        inc.moderation_notes = data.moderation_notes
+
+        # Si fue validada y publicada, incorporar automáticamente al expediente / Hoja de Vida del alumno
+        if decision == "VALIDADA_PUBLICADA" and inc.student:
+            st = inc.student
+            entry_line = (
+                f"[{inc.incident_date.isoformat()}|INCIDENCIA_{inc.category}|{inc.reviewed_by_name}] "
+                f"({inc.incident_code}) {inc.title}: {inc.description}"
+            )
+            if not st.notes or inc.incident_code not in st.notes:
+                st.notes = f"{st.notes}\n{entry_line}".strip() if st.notes else entry_line
+
+        self.db.commit()
+        self.db.refresh(inc)
+        return self._serialize_academic_incident(inc)
+
+    def list_academic_incidents(self, student_id: Optional[str] = None, status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        from app.modules.academic.models.student import AcademicIncident
+
+        q = self.db.query(AcademicIncident).filter(AcademicIncident.deleted_at.is_(None))
+        if student_id:
+            q = q.filter(AcademicIncident.student_id == student_id)
+        if status_filter and status_filter.upper() != "ALL":
+            q = q.filter(AcademicIncident.status == status_filter.upper())
+        return [self._serialize_academic_incident(i) for i in q.order_by(desc(AcademicIncident.created_at)).all()]
+
+    def _serialize_academic_incident(self, inc: Any) -> Dict[str, Any]:
+        st = inc.student
+        person = st.person if st else None
+        return {
+            "id": inc.id,
+            "incident_code": inc.incident_code,
+            "student_id": inc.student_id,
+            "student_name": person.full_name if person else "Alumno",
+            "cohort_id": inc.cohort_id,
+            "course_id": inc.course_id,
+            "reported_by_id": inc.reported_by_id,
+            "reported_by_name": inc.reported_by_name,
+            "incident_date": inc.incident_date.isoformat() if inc.incident_date else None,
+            "title": inc.title,
+            "description": inc.description,
+            "category": inc.category,
+            "severity": inc.severity,
+            "status": inc.status,
+            "is_editable_by_teacher": inc.status == "PENDIENTE_REVISION",
+            "reviewed_by_name": inc.reviewed_by_name,
+            "reviewed_at": inc.reviewed_at,
+            "moderation_notes": inc.moderation_notes,
+        }
+
+    # -------------------------------------------------------------------------
+    # B.4, B.5 y B.6. Cursos Cortos/Seminarios, Reglas de Aprobación y Diploma Automático
+    # -------------------------------------------------------------------------
+    def update_program_approval_rules(self, program_id: str, data: Any) -> Dict[str, Any]:
+        prog = self.db.query(Program).filter(Program.id == program_id, Program.deleted_at.is_(None)).first()
+        if not prog:
+            raise EntityNotFoundException("Programa / Curso", program_id)
+
+        if data.requires_interview is not None:
+            prog.requires_interview = bool(data.requires_interview)
+        if data.min_attendance_pct is not None:
+            prog.min_attendance_pct = data.min_attendance_pct
+        if data.min_passing_grade is not None:
+            prog.min_passing_grade = data.min_passing_grade
+        if data.requires_grade_for_approval is not None:
+            prog.requires_grade_for_approval = bool(data.requires_grade_for_approval)
+        if data.auto_issue_diploma is not None:
+            prog.auto_issue_diploma = bool(data.auto_issue_diploma)
+        if data.practice_max_months is not None:
+            prog.practice_max_months = int(data.practice_max_months)
+
+        self.db.commit()
+        self.db.refresh(prog)
+        return {
+            "program_id": prog.id,
+            "code": prog.code,
+            "name": prog.name,
+            "program_type": prog.program_type,
+            "requires_interview": bool(prog.requires_interview),
+            "min_attendance_pct": float(prog.min_attendance_pct or 75.0),
+            "min_passing_grade": float(prog.min_passing_grade) if prog.min_passing_grade is not None else None,
+            "requires_grade_for_approval": bool(prog.requires_grade_for_approval),
+            "auto_issue_diploma": bool(prog.auto_issue_diploma),
+            "practice_max_months": int(prog.practice_max_months or 6),
+        }
+
+    def update_course_approval_rules(self, course_id: str, data: Any) -> Dict[str, Any]:
+        course = self.db.query(Course).filter(Course.id == course_id, Course.deleted_at.is_(None)).first()
+        if not course:
+            raise EntityNotFoundException("Asignatura / Curso", course_id)
+
+        if data.min_attendance_pct is not None:
+            course.min_attendance_pct = data.min_attendance_pct
+        if data.min_passing_grade is not None:
+            course.min_passing_grade = data.min_passing_grade
+        if data.requires_grade_for_approval is not None:
+            course.requires_grade_for_approval = bool(data.requires_grade_for_approval)
+        if data.auto_issue_diploma is not None:
+            course.auto_issue_diploma = bool(data.auto_issue_diploma)
+
+        self.db.commit()
+        self.db.refresh(course)
+        return {
+            "course_id": course.id,
+            "code": course.code,
+            "name": course.name,
+            "min_attendance_pct": float(course.min_attendance_pct or 75.0),
+            "min_passing_grade": float(course.min_passing_grade) if course.min_passing_grade is not None else None,
+            "requires_grade_for_approval": bool(course.requires_grade_for_approval),
+            "auto_issue_diploma": bool(course.auto_issue_diploma),
+        }
+
+    def enroll_direct_short_course(self, data: Any) -> Dict[str, Any]:
+        """
+        B.4: Proceso simplificado de inscripción directa para cursos cortos y seminarios
+        que tengan configurado requires_interview = False.
+        """
+        prog = self.db.query(Program).filter(Program.id == data.program_id, Program.deleted_at.is_(None)).first()
+        if not prog:
+            raise EntityNotFoundException("Curso / Seminario", data.program_id)
+
+        if getattr(prog, "requires_interview", True):
+            raise SanBaoException(
+                f"El programa '{prog.name}' requiere entrevista de postulación previa. Utilice el flujo regular de Fichas de Admisión y Entrevistas."
+            )
+
+        onb_req = InitiateOnboardingRequest(
+            rut=data.rut,
+            first_name=data.first_name,
+            last_name=data.last_name,
+            email=data.email,
+            phone=data.phone,
+            program_id=prog.id,
+            campus=data.campus,
+            installments_count=1,
+            life_record_notes=f"Inscripción directa simplificada en curso corto/seminario ({prog.code}: {prog.name}) sin entrevista previa.",
+        )
+        res = self.initiate_enrollment_onboarding(onb_req)
+        res["simplified_direct_enrollment"] = True
+        res["requires_interview"] = False
+        return res
+
+    def evaluate_cohort_enrollment_approval(
+        self,
+        cohort_enrollment_id: str,
+        attendance_percentage: Optional[float] = None,
+        final_grade: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        B.5: Evalúa si el alumno cumple los requisitos parametrizados del curso/programa
+        (asistencia mínima y nota mínima cuando corresponda) y genera automáticamente el diploma/certificado.
+        """
+        ce = (
+            self.db.query(CohortEnrollment)
+            .filter(CohortEnrollment.id == cohort_enrollment_id, CohortEnrollment.deleted_at.is_(None))
+            .first()
+        )
+        if not ce:
+            raise EntityNotFoundException("Inscripción de Cohorte", cohort_enrollment_id)
+
+        if attendance_percentage is not None:
+            ce.attendance_percentage = attendance_percentage
+        if final_grade is not None:
+            ce.final_grade = final_grade
+
+        cohort = ce.cohort
+        course = cohort.course if cohort else None
+        program = (course.program if (course and course.program) else None) or (
+            ce.enrollment.program if ce.enrollment else None
+        )
+
+        min_att = float(
+            getattr(course, "min_attendance_pct", None)
+            or getattr(program, "min_attendance_pct", None)
+            or 75.0
+        )
+        requires_grade = bool(
+            getattr(course, "requires_grade_for_approval", True)
+            if course is not None
+            else getattr(program, "requires_grade_for_approval", True)
+        )
+        min_grade = float(
+            getattr(course, "min_passing_grade", None)
+            or getattr(program, "min_passing_grade", None)
+            or 4.0
+        )
+        auto_diploma = bool(
+            getattr(course, "auto_issue_diploma", False)
+            or getattr(program, "auto_issue_diploma", True)
+        )
+
+        curr_att = float(ce.attendance_percentage or 0.0)
+        curr_grade = float(ce.final_grade) if ce.final_grade is not None else None
+
+        att_ok = curr_att >= min_att
+        grade_ok = True if not requires_grade else (curr_grade is not None and curr_grade >= min_grade)
+        is_approved = att_ok and grade_ok
+
+        ce.status = "APPROVED" if is_approved else "FAILED"
+        self.db.flush()
+
+        issued_document = None
+        if is_approved and auto_diploma:
+            doc_type = "CERTIFICADO_CURSO" if (program and program.program_type in ("CURSO", "FORMACION_CONTINUA")) else "DIPLOMA_EGRESO"
+            existing_doc = (
+                self.db.query(AcademicDocument)
+                .filter(
+                    AcademicDocument.student_id == ce.student_id,
+                    AcademicDocument.document_type == doc_type,
+                    AcademicDocument.course_id == (course.id if course else None),
+                    AcademicDocument.deleted_at.is_(None),
+                )
+                .first()
+            )
+            if not existing_doc:
+                doc_count = self.db.query(AcademicDocument).count() + 1
+                prefix = "CERT-CUR" if doc_type == "CERTIFICADO_CURSO" else "DIP-AUTO"
+                existing_doc = AcademicDocument(
+                    student_id=ce.student_id,
+                    document_type=doc_type,
+                    document_number=f"{prefix}-2026-{doc_count:04d}",
+                    program_id=program.id if program else None,
+                    course_id=course.id if course else None,
+                    issue_date=date.today(),
+                    is_compliant=True,
+                    content_payload=f"Generado automáticamente por cumplimiento de reglas B.5 (Asistencia {curr_att}% >= {min_att}%)",
+                )
+                self.db.add(existing_doc)
+                self.db.flush()
+            issued_document = {
+                "document_id": existing_doc.id,
+                "document_number": existing_doc.document_number,
+                "document_type": existing_doc.document_type,
+                "issue_date": existing_doc.issue_date.isoformat(),
+            }
+
+        self.db.commit()
+        self.db.refresh(ce)
+        return {
+            "cohort_enrollment_id": ce.id,
+            "student_id": ce.student_id,
+            "status": ce.status,
+            "is_approved": is_approved,
+            "attendance_percentage": curr_att,
+            "min_attendance_required": min_att,
+            "final_grade": curr_grade,
+            "min_grade_required": min_grade if requires_grade else None,
+            "requires_grade_for_approval": requires_grade,
+            "auto_issued_diploma": issued_document,
+        }
+
+    def get_student_training_history(self, student_id: str) -> Dict[str, Any]:
+        """
+        B.6: Historial integral de formación que consolida diplomados, cursos cortos, seminarios,
+        asignaturas transitorias y práctica clínica.
+        """
+        st = self.db.query(Student).filter(Student.id == student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", student_id)
+
+        enrollments = (
+            self.db.query(Enrollment)
+            .filter(Enrollment.student_id == st.id, Enrollment.deleted_at.is_(None))
+            .order_by(Enrollment.enrollment_date.asc())
+            .all()
+        )
+        programs_history = []
+        for e in enrollments:
+            p = e.program
+            programs_history.append({
+                "enrollment_id": e.id,
+                "program_id": e.program_id,
+                "program_code": p.code if p else "",
+                "program_name": p.name if p else "Programa",
+                "program_type": p.program_type if p else "DIPLOMADO",
+                "enrollment_date": e.enrollment_date.isoformat() if e.enrollment_date else None,
+                "status": e.status,
+            })
+
+        cohorts_history = self.list_student_cohort_enrollments(st.id)
+
+        practice_hours = (
+            self.db.query(ClinicalPracticeHour)
+            .filter(ClinicalPracticeHour.student_id == st.id, ClinicalPracticeHour.deleted_at.is_(None))
+            .order_by(ClinicalPracticeHour.activity_date.asc(), ClinicalPracticeHour.created_at.asc())
+            .all()
+        )
+        total_approved_hours = sum(
+            int(h.hours_completed or 0) for h in practice_hours if h.status == "APPROVED"
+        )
+        practice_history = [
+            {
+                "hour_id": h.id,
+                "activity_date": h.activity_date.isoformat() if h.activity_date else None,
+                "hours_completed": int(h.hours_completed or 0),
+                "specialty": getattr(h, "specialty", "ACUPUNTURA") or "ACUPUNTURA",
+                "record_type": getattr(h, "record_type", "ACREDITACION_TURNO") or "ACREDITACION_TURNO",
+                "parent_hour_id": getattr(h, "parent_hour_id", None),
+                "adjustment_reason": getattr(h, "adjustment_reason", None),
+                "tutor_name": h.tutor.full_name if h.tutor else "Tutor Clínico",
+                "status": h.status,
+                "comments": h.comments,
+            }
+            for h in practice_hours
+        ]
+
+        docs = (
+            self.db.query(AcademicDocument)
+            .filter(AcademicDocument.student_id == st.id, AcademicDocument.deleted_at.is_(None))
+            .all()
+        )
+        return {
+            "student_id": st.id,
+            "student_number": st.student_number,
+            "full_name": st.person.full_name if st.person else "Alumno",
+            "programs_and_seminars": programs_history,
+            "cohort_enrollments": cohorts_history,
+            "clinical_practice_history": {
+                "total_accredited_hours": total_approved_hours,
+                "records": practice_history,
+            },
+            "issued_diplomas_and_certificates": [
+                {
+                    "document_number": d.document_number,
+                    "document_type": d.document_type,
+                    "issue_date": d.issue_date.isoformat() if d.issue_date else None,
+                }
+                for d in docs
+            ],
+        }
+
+    # -------------------------------------------------------------------------
+    # B.7 y B.8. Evaluaciones de Tutores (Bidireccional + Confidencial) y Alertas de Práctica
+    # -------------------------------------------------------------------------
+    def _resolve_tutor_person(self, tutor_id_or_rut: Optional[str]) -> Person:
+        from app.shared.validators.rut import ChileanRUT
+
+        if tutor_id_or_rut:
+            p = (
+                self.db.query(Person)
+                .filter(
+                    or_(
+                        Person.id == tutor_id_or_rut,
+                        Person.rut == ChileanRUT.clean(tutor_id_or_rut),
+                        Person.rut == tutor_id_or_rut,
+                    )
+                )
+                .first()
+            )
+            if p:
+                return p
+            pr = self.db.query(Practitioner).filter(Practitioner.id == tutor_id_or_rut).first()
+            if pr and pr.person:
+                return pr.person
+        pr = self.db.query(Practitioner).filter(Practitioner.is_tutor == True).first()
+        if pr and pr.person:
+            return pr.person
+        return self.db.query(Person).first()
+
+    def create_tutor_semester_evaluation(self, data: Any) -> Dict[str, Any]:
+        """
+        B.7: Evaluación semestral del alumno por el tutor + registro de entrega de reportes clínicos.
+        """
+        from app.modules.academic.models.evaluation import TutorStudentEvaluation
+
+        st = self.db.query(Student).filter(Student.id == data.student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", data.student_id)
+        tutor_person = self._resolve_tutor_person(data.tutor_id)
+
+        final_score = round(
+            (
+                float(data.clinical_competency_score)
+                + float(data.anamnesis_quality_score)
+                + float(data.punctuality_ethics_score)
+            )
+            / 3.0,
+            1,
+        )
+        compliant = int(data.clinical_reports_delivered) >= int(data.clinical_reports_required)
+
+        ev = TutorStudentEvaluation(
+            student_id=st.id,
+            tutor_id=tutor_person.id,
+            period_code=data.period_code,
+            specialty=data.specialty,
+            clinical_competency_score=data.clinical_competency_score,
+            anamnesis_quality_score=data.anamnesis_quality_score,
+            punctuality_ethics_score=data.punctuality_ethics_score,
+            final_score=final_score,
+            clinical_reports_required=data.clinical_reports_required,
+            clinical_reports_delivered=data.clinical_reports_delivered,
+            clinical_reports_compliant=compliant,
+            report_delivery_notes=data.report_delivery_notes,
+            feedback=data.feedback,
+            evaluation_date=date.today(),
+        )
+        self.db.add(ev)
+        self.db.commit()
+        self.db.refresh(ev)
+        return {
+            "id": ev.id,
+            "student_id": ev.student_id,
+            "student_name": st.person.full_name if st.person else "Alumno",
+            "tutor_id": ev.tutor_id,
+            "tutor_name": tutor_person.full_name,
+            "period_code": ev.period_code,
+            "specialty": ev.specialty,
+            "final_score": float(ev.final_score),
+            "clinical_reports_required": ev.clinical_reports_required,
+            "clinical_reports_delivered": ev.clinical_reports_delivered,
+            "clinical_reports_compliant": ev.clinical_reports_compliant,
+            "feedback": ev.feedback,
+            "evaluation_date": ev.evaluation_date.isoformat(),
+        }
+
+    def create_student_tutor_evaluation(self, data: Any) -> Dict[str, Any]:
+        """
+        B.7: Evaluación del tutor por parte del alumno con garantía de confidencialidad.
+        """
+        from app.modules.academic.models.evaluation import StudentTutorEvaluation
+
+        st = self.db.query(Student).filter(Student.id == data.student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", data.student_id)
+        tutor_person = self._resolve_tutor_person(data.tutor_id)
+
+        overall = round(
+            (
+                float(data.pedagogical_clarity_score)
+                + float(data.supervision_support_score)
+                + float(data.clinical_feedback_score)
+            )
+            / 3.0,
+            1,
+        )
+        existing = (
+            self.db.query(StudentTutorEvaluation)
+            .filter(
+                StudentTutorEvaluation.student_id == st.id,
+                StudentTutorEvaluation.tutor_id == tutor_person.id,
+                StudentTutorEvaluation.period_code == data.period_code,
+                StudentTutorEvaluation.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if existing:
+            existing.pedagogical_clarity_score = data.pedagogical_clarity_score
+            existing.supervision_support_score = data.supervision_support_score
+            existing.clinical_feedback_score = data.clinical_feedback_score
+            existing.overall_score = overall
+            existing.confidential_comments = data.confidential_comments
+            ev = existing
+        else:
+            ev = StudentTutorEvaluation(
+                student_id=st.id,
+                tutor_id=tutor_person.id,
+                period_code=data.period_code,
+                pedagogical_clarity_score=data.pedagogical_clarity_score,
+                supervision_support_score=data.supervision_support_score,
+                clinical_feedback_score=data.clinical_feedback_score,
+                overall_score=overall,
+                confidential_comments=data.confidential_comments,
+                is_confidential=True,
+                evaluation_date=date.today(),
+            )
+            self.db.add(ev)
+        self.db.commit()
+        self.db.refresh(ev)
+        # No exponer student_id ni nombre del alumno en respuestas de consulta general
+        return {
+            "evaluation_id": ev.id,
+            "tutor_id": ev.tutor_id,
+            "tutor_name": tutor_person.full_name,
+            "period_code": ev.period_code,
+            "overall_score": float(ev.overall_score),
+            "is_confidential": True,
+            "anonymized": True,
+        }
+
+    def get_aggregated_tutor_evaluations_report(self, period_code: Optional[str] = None) -> Dict[str, Any]:
+        """
+        B.7: Reporte agregado de evaluaciones de tutores con control estricto de confidencialidad
+        (nunca expone student_id ni identidad de los alumnos evaluadores).
+        """
+        from app.modules.academic.models.evaluation import StudentTutorEvaluation
+
+        q = self.db.query(StudentTutorEvaluation).filter(StudentTutorEvaluation.deleted_at.is_(None))
+        if period_code:
+            q = q.filter(StudentTutorEvaluation.period_code == period_code)
+        rows = q.all()
+
+        grouped: Dict[str, List[Any]] = {}
+        for r in rows:
+            grouped.setdefault(r.tutor_id, []).append(r)
+
+        tutors_summary = []
+        for tutor_id, evals in grouped.items():
+            tutor_person = self.db.query(Person).filter(Person.id == tutor_id).first()
+            count = len(evals)
+            avg_overall = round(sum(float(e.overall_score) for e in evals) / count, 2)
+            avg_clarity = round(sum(float(e.pedagogical_clarity_score) for e in evals) / count, 2)
+            avg_support = round(sum(float(e.supervision_support_score) for e in evals) / count, 2)
+            avg_feedback = round(sum(float(e.clinical_feedback_score) for e in evals) / count, 2)
+            tutors_summary.append({
+                "tutor_id": tutor_id,
+                "tutor_name": tutor_person.full_name if tutor_person else "Tutor Clínico",
+                "evaluations_count": count,
+                "average_overall_score": avg_overall,
+                "average_pedagogical_clarity": avg_clarity,
+                "average_supervision_support": avg_support,
+                "average_clinical_feedback": avg_feedback,
+                "confidentiality_policy": "ANONYMIZED_AGGREGATE_ONLY",
+                "anonymized_feedback_snippets": [e.confidential_comments for e in evals if e.confidential_comments],
+            })
+
+        return {
+            "period_code": period_code or "ALL",
+            "confidentiality_enforced": True,
+            "student_identities_exposed": False,
+            "tutors": tutors_summary,
+        }
+
+    def get_clinical_practice_alerts(self) -> Dict[str, Any]:
+        """
+        B.8: Genera alertas para alumnos que superen los tiempos estimados de práctica
+        o presenten horas insuficientes.
+        """
+        students = (
+            self.db.query(Student)
+            .filter(Student.clinical_practice_approved == True, Student.deleted_at.is_(None))
+            .all()
+        )
+        alerts = []
+        today = date.today()
+        for st in students:
+            enr = (
+                self.db.query(Enrollment)
+                .filter(Enrollment.student_id == st.id, Enrollment.deleted_at.is_(None))
+                .order_by(desc(Enrollment.enrollment_date))
+                .first()
+            )
+            prog = enr.program if enr else None
+            required_hours = int(getattr(prog, "min_clinical_hours", 0) or 120)
+            max_months = int(getattr(prog, "practice_max_months", 6) or 6)
+
+            hours_rows = (
+                self.db.query(ClinicalPracticeHour)
+                .filter(
+                    ClinicalPracticeHour.student_id == st.id,
+                    ClinicalPracticeHour.status == "APPROVED",
+                    ClinicalPracticeHour.deleted_at.is_(None),
+                )
+                .all()
+            )
+            completed_hours = sum(int(h.hours_completed or 0) for h in hours_rows)
+            start_dt = st.clinical_practice_approval_date or st.admission_date or today
+            elapsed_days = max(0, (today - start_dt).days)
+            elapsed_months = round(elapsed_days / 30.0, 1)
+
+            student_alerts = []
+            if elapsed_days > (max_months * 30) and completed_hours < required_hours:
+                student_alerts.append({
+                    "alert_type": "EXCESO_TIEMPO_PRACTICA",
+                    "severity": "ALTA",
+                    "message": f"Supera el tiempo máximo estimado de práctica ({elapsed_months} meses > {max_months} meses) con {completed_hours}/{required_hours} hrs.",
+                })
+            if completed_hours < required_hours:
+                student_alerts.append({
+                    "alert_type": "HORAS_INSUFICIENTES",
+                    "severity": "MEDIA" if completed_hours > 0 else "ALTA",
+                    "message": f"Presenta horas de práctica insuficientes ({completed_hours} de {required_hours} hrs requeridas).",
+                })
+
+            if student_alerts:
+                alerts.append({
+                    "student_id": st.id,
+                    "student_number": st.student_number,
+                    "student_name": st.person.full_name if st.person else "Alumno",
+                    "completed_hours": completed_hours,
+                    "required_hours": required_hours,
+                    "deficit_hours": max(0, required_hours - completed_hours),
+                    "elapsed_months": elapsed_months,
+                    "max_estimated_months": max_months,
+                    "decreto_313_coverage_confirmed": bool(getattr(st, "decreto_313_coverage_confirmed", True)),
+                    "alerts": student_alerts,
+                })
+
+        return {
+            "total_students_with_alerts": len(alerts),
+            "items": alerts,
+        }
+
+    # -------------------------------------------------------------------------
+    # C. Integración Académica y Clínica (Puente Idempotente al Cierre de Turno)
+    # -------------------------------------------------------------------------
+    def process_clinical_shift_closure_bridge(self, data: Any) -> Dict[str, Any]:
+        """
+        Requerimiento C (Prioritario):
+        Las horas de práctica se originan en el cierre de los turnos/sesiones clínicas.
+        Cuando el tutor cierra y valida una sesión:
+        - Actualiza: Horas del alumno, Especialidad, Tutor, Sesión, Historial de práctica, Evaluaciones e Información para remuneraciones.
+        - Acumula sin sobrescribir registros anteriores.
+        - Aplica idempotencia estricta por idempotency_key para evitar duplicar horas si el evento se recibe más de una vez.
+        """
+        st = self.db.query(Student).filter(Student.id == data.student_id, Student.deleted_at.is_(None)).first()
+        if not st:
+            raise EntityNotFoundException("Alumno", data.student_id)
+        tutor_person = self._resolve_tutor_person(data.tutor_id)
+
+        # 1. Control de Idempotencia
+        existing_hour = (
+            self.db.query(ClinicalPracticeHour)
+            .filter(
+                ClinicalPracticeHour.idempotency_key == data.idempotency_key,
+                ClinicalPracticeHour.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if existing_hour:
+            total_hours = sum(
+                int(h.hours_completed or 0)
+                for h in self.db.query(ClinicalPracticeHour)
+                .filter(
+                    ClinicalPracticeHour.student_id == st.id,
+                    ClinicalPracticeHour.status == "APPROVED",
+                    ClinicalPracticeHour.deleted_at.is_(None),
+                )
+                .all()
+            )
+            gross_fee = float(existing_hour.hours_completed or 0) * float(data.tutor_hourly_rate_clp or 25000.0)
+            return {
+                "idempotent_replay": True,
+                "idempotency_key": data.idempotency_key,
+                "practice_hour_id": existing_hour.id,
+                "student_id": st.id,
+                "tutor_id": existing_hour.tutor_id,
+                "tutor_name": tutor_person.full_name,
+                "specialty": existing_hour.specialty,
+                "shift_id": existing_hour.shift_id,
+                "session_id": existing_hour.patient_encounter_id,
+                "hours_accredited_in_event": int(existing_hour.hours_completed),
+                "total_accumulated_hours": total_hours,
+                "remuneration_accrual": {
+                    "tutor_person_id": existing_hour.tutor_id,
+                    "validated_hours": int(existing_hour.hours_completed),
+                    "hourly_rate_clp": float(data.tutor_hourly_rate_clp or 25000.0),
+                    "gross_amount_clp": gross_fee,
+                },
+            }
+
+        # 2. Crear registro acumulativo de horas clínicas sin sobrescribir anteriores
+        new_hour = ClinicalPracticeHour(
+            student_id=st.id,
+            tutor_id=tutor_person.id,
+            activity_date=data.activity_date or date.today(),
+            hours_completed=int(data.hours_completed),
+            patient_encounter_id=data.session_id,
+            shift_id=data.shift_id,
+            specialty=(data.specialty or "ACUPUNTURA").strip().upper(),
+            idempotency_key=data.idempotency_key,
+            record_type="ACREDITACION_TURNO",
+            remuneration_accrued=True,
+            status="APPROVED",
+            comments=data.tutor_feedback or f"Acreditación automática por cierre de turno/sesión clínica ({data.specialty})",
+        )
+        self.db.add(new_hour)
+        self.db.flush()
+
+        # 3. Si incluye nota de evaluación en el cierre, registrarla
+        if data.tutor_evaluation_score is not None:
+            from app.modules.academic.models.evaluation import TutorStudentEvaluation
+            ev = TutorStudentEvaluation(
+                student_id=st.id,
+                tutor_id=tutor_person.id,
+                period_code="2026-2",
+                specialty=new_hour.specialty,
+                clinical_competency_score=data.tutor_evaluation_score,
+                anamnesis_quality_score=data.tutor_evaluation_score,
+                punctuality_ethics_score=data.tutor_evaluation_score,
+                final_score=data.tutor_evaluation_score,
+                clinical_reports_required=1,
+                clinical_reports_delivered=1,
+                clinical_reports_compliant=True,
+                feedback=data.tutor_feedback,
+                evaluation_date=data.activity_date or date.today(),
+            )
+            self.db.add(ev)
+
+        self.db.commit()
+        self.db.refresh(new_hour)
+
+        total_hours = sum(
+            int(h.hours_completed or 0)
+            for h in self.db.query(ClinicalPracticeHour)
+            .filter(
+                ClinicalPracticeHour.student_id == st.id,
+                ClinicalPracticeHour.status == "APPROVED",
+                ClinicalPracticeHour.deleted_at.is_(None),
+            )
+            .all()
+        )
+        gross_fee = float(new_hour.hours_completed) * float(data.tutor_hourly_rate_clp or 25000.0)
+        return {
+            "idempotent_replay": False,
+            "idempotency_key": data.idempotency_key,
+            "practice_hour_id": new_hour.id,
+            "student_id": st.id,
+            "tutor_id": tutor_person.id,
+            "tutor_name": tutor_person.full_name,
+            "specialty": new_hour.specialty,
+            "shift_id": new_hour.shift_id,
+            "session_id": new_hour.patient_encounter_id,
+            "hours_accredited_in_event": int(new_hour.hours_completed),
+            "total_accumulated_hours": total_hours,
+            "remuneration_accrual": {
+                "tutor_person_id": tutor_person.id,
+                "validated_hours": int(new_hour.hours_completed),
+                "hourly_rate_clp": float(data.tutor_hourly_rate_clp or 25000.0),
+                "gross_amount_clp": gross_fee,
+            },
+        }
+
+    def adjust_clinical_practice_hour_auditable(self, hour_id: str, data: Any) -> Dict[str, Any]:
+        """
+        Requerimiento C: Las correcciones de horas clínicas se registran mediante ajustes auditables
+        sin sobrescribir el registro original.
+        """
+        orig = (
+            self.db.query(ClinicalPracticeHour)
+            .filter(ClinicalPracticeHour.id == hour_id, ClinicalPracticeHour.deleted_at.is_(None))
+            .first()
+        )
+        if not orig:
+            raise EntityNotFoundException("Registro de Hora de Práctica Clínica", hour_id)
+
+        adj = ClinicalPracticeHour(
+            student_id=orig.student_id,
+            cohort_id=orig.cohort_id,
+            tutor_id=orig.tutor_id,
+            activity_date=date.today(),
+            hours_completed=int(data.delta_hours),
+            patient_encounter_id=orig.patient_encounter_id,
+            shift_id=orig.shift_id,
+            specialty=getattr(orig, "specialty", "ACUPUNTURA") or "ACUPUNTURA",
+            record_type="AJUSTE_AUDITABLE",
+            parent_hour_id=orig.id,
+            adjusted_by_user_id=data.adjusted_by_user_id,
+            adjustment_reason=data.reason.strip(),
+            remuneration_accrued=True,
+            status="APPROVED",
+            comments=f"Ajuste auditable ({data.delta_hours:+d} hrs) sobre registro {orig.id}: {data.reason}",
+        )
+        self.db.add(adj)
+        self.db.commit()
+        self.db.refresh(adj)
+
+        total_hours = sum(
+            int(h.hours_completed or 0)
+            for h in self.db.query(ClinicalPracticeHour)
+            .filter(
+                ClinicalPracticeHour.student_id == orig.student_id,
+                ClinicalPracticeHour.status == "APPROVED",
+                ClinicalPracticeHour.deleted_at.is_(None),
+            )
+            .all()
+        )
+        return {
+            "adjustment_id": adj.id,
+            "original_hour_id": orig.id,
+            "original_hours_preserved": int(orig.hours_completed),
+            "delta_hours": int(adj.hours_completed),
+            "reason": adj.adjustment_reason,
+            "adjusted_by": adj.adjusted_by_user_id,
+            "total_accumulated_hours": total_hours,
+        }
+
 
 

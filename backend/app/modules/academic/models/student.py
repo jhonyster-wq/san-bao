@@ -24,7 +24,8 @@ class Student(Base, AuditMixin):
     clinical_practice_approved = Column(Boolean, default=False, nullable=False, comment="Aprobación curricular para prácticas clínicas supervisadas")
     clinical_practice_approval_date = Column(Date, nullable=True, comment="Fecha de aprobación de práctica clínica")
     clinical_practice_notes = Column(Text, nullable=True, comment="Observaciones o resolución de habilitación clínica")
-    notes = Column(String(500), nullable=True)
+    decreto_313_coverage_confirmed = Column(Boolean, default=True, nullable=False, comment="Confirmación de cobertura seguro accidentes escolares Decreto 313")
+    notes = Column(Text, nullable=True)
 
     person = relationship("Person", foreign_keys=[person_id])
     enrollments = relationship("Enrollment", back_populates="student", cascade="all, delete-orphan")
@@ -82,6 +83,11 @@ class CohortEnrollment(Base, AuditMixin):
     enrollment_id = Column(String(36), ForeignKey("academic.enrollments.id", ondelete="CASCADE"), nullable=False, index=True)
     student_id = Column(String(36), ForeignKey("academic.students.id", ondelete="CASCADE"), nullable=False, index=True)
     cohort_id = Column(String(36), ForeignKey("academic.cohorts.id", ondelete="CASCADE"), nullable=False, index=True)
+    enrollment_type = Column(String(40), default="REGULAR", nullable=False, comment="B.1: REGULAR, TRANSITORIA, RECUPERACION")
+    valid_from = Column(Date, nullable=True, comment="B.1: Inicio del período de vigencia de la inscripción")
+    valid_until = Column(Date, nullable=True, comment="B.1: Fin del período de vigencia de la inscripción")
+    origin_cohort_id = Column(String(36), nullable=True, comment="B.1: Cohorte original asociada en caso de asignatura transitoria o recuperación")
+    notes = Column(Text, nullable=True, comment="B.1: Historial o motivo de inscripción en doble cohorte / transitoria")
     final_grade = Column(Numeric(3, 1), nullable=True, comment="Calificación final chilena (1.0 a 7.0)")
     attendance_percentage = Column(Numeric(5, 2), default=0.0, nullable=False)
     status = Column(String(50), default="ENROLLED", nullable=False, comment="ENROLLED, APPROVED, FAILED, WITHDRAWN")
@@ -109,6 +115,9 @@ class StudentCourseTransfer(Base, AuditMixin):
     to_program_id = Column(String(36), ForeignKey("academic.programs.id"), nullable=False, index=True)
     transfer_date = Column(Date, nullable=False)
     reason = Column(String(255), nullable=False, comment="Motivo del cambio de curso")
+    authorized_by = Column(String(150), default="Coordinación Académica - Escuela San Bao", nullable=False, comment="B.2: Autorizador responsable del cambio de curso")
+    authorization_code = Column(String(60), nullable=True, index=True, comment="B.2: Folio de resolución de autorización")
+    preserved_history_snapshot = Column(Text, nullable=True, comment="B.2: Snapshot JSON del historial académico conservado")
     notes = Column(Text, nullable=True)
 
     student = relationship("Student", back_populates="transfers")
@@ -161,6 +170,9 @@ class StudentOnboarding(Base, AuditMixin):
     program_id = Column(String(36), ForeignKey("academic.programs.id", ondelete="RESTRICT"), nullable=False, index=True)
     commitment_id = Column(String(36), ForeignKey("finance.payment_commitments.id", ondelete="SET NULL"), nullable=True, index=True)
     legal_document_id = Column(String(36), ForeignKey("finance.legal_documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    promissory_note_document_id = Column(String(36), ForeignKey("finance.legal_documents.id", ondelete="SET NULL"), nullable=True, index=True, comment="I: ID del Pagaré generado en matrícula con cuotas/convenio")
+    promissory_note_code = Column(String(60), nullable=True, comment="I: Código del Pagaré asociado")
+    enrollment_regularized = Column(Boolean, default=False, nullable=False, comment="I: True únicamente cuando todos los documentos obligatorios están FIRMADOS")
 
     # Aranceles precargados desde catálogo
     enrollment_fee = Column(Numeric(12, 0), default=0, nullable=False, comment="Valor matrícula / pago inicial Webpay")
@@ -242,6 +254,56 @@ class AdmissionApplication(Base, AuditMixin):
     interviewer_notes = Column(Text, nullable=True, comment="Ficha técnica / observaciones del entrevistador")
     evaluation_decision = Column(String(40), default="PENDIENTE", nullable=False, comment="PENDIENTE, ACEPTADO, RECHAZADO")
     onboarding_id = Column(String(36), nullable=True, comment="ID del proceso de matrícula iniciado tras aceptación")
+
+
+class AcademicIncident(Base, AuditMixin):
+    """
+    Incidencias Académicas con Flujo de Revisión y Moderación (Requerimiento B.3):
+    1) El docente registra la incidencia -> queda en estado PENDIENTE_REVISION.
+    2) Coordinación Académica o Dirección la revisa, valida y tipifica.
+    3) Se publica en el expediente correspondiente (VALIDADA_PUBLICADA).
+    4) El docente NO puede modificar directamente una incidencia ya validada.
+    """
+
+    __tablename__ = "academic_incidents"
+    __table_args__ = (
+        Index("ix_academic_incidents_student_status", "student_id", "status"),
+        {"schema": "academic"},
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    incident_code = Column(String(50), unique=True, nullable=False, index=True, comment="Código único ej: INC-2026-0001")
+    student_id = Column(String(36), ForeignKey("academic.students.id", ondelete="CASCADE"), nullable=False, index=True)
+    cohort_id = Column(String(36), ForeignKey("academic.cohorts.id", ondelete="SET NULL"), nullable=True, index=True)
+    course_id = Column(String(36), ForeignKey("academic.courses.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    reported_by_id = Column(String(36), nullable=True, index=True, comment="ID del docente que registra la incidencia")
+    reported_by_name = Column(String(150), nullable=False)
+    incident_date = Column(Date, nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+
+    category = Column(
+        String(50),
+        default="ACADEMICA",
+        nullable=False,
+        comment="ACADEMICA, CONDUCTUAL, ASISTENCIA, CLINICA, RECONOCIMIENTO",
+    )
+    severity = Column(String(30), default="MEDIA", nullable=False, comment="BAJA, MEDIA, ALTA")
+    status = Column(
+        String(40),
+        default="PENDIENTE_REVISION",
+        nullable=False,
+        index=True,
+        comment="PENDIENTE_REVISION, VALIDADA_PUBLICADA, RECHAZADA",
+    )
+
+    reviewed_by_name = Column(String(150), nullable=True, comment="Coordinación Académica o Dirección que valida y tipifica")
+    reviewed_at = Column(String(40), nullable=True)
+    moderation_notes = Column(Text, nullable=True)
+
+    student = relationship("Student")
+
 
 
 

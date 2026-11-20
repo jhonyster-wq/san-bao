@@ -8,8 +8,16 @@ from app.modules.academic.models.student import (
     AcademicDocument,
     StudentOnboarding,
     AdmissionApplication,
+    AcademicIncident,
 )
-from app.modules.academic.models.evaluation import Evaluation, Grade, Attendance, ClinicalPracticeHour
+from app.modules.academic.models.evaluation import (
+    Evaluation,
+    Grade,
+    Attendance,
+    ClinicalPracticeHour,
+    TutorStudentEvaluation,
+    StudentTutorEvaluation,
+)
 from app.modules.academic.models.content import CourseClassContent
 
 __all__ = [
@@ -26,9 +34,12 @@ __all__ = [
     "AcademicDocument",
     "StudentOnboarding",
     "AdmissionApplication",
+    "AcademicIncident",
     "Evaluation",
     "Grade",
     "Attendance",
     "ClinicalPracticeHour",
+    "TutorStudentEvaluation",
+    "StudentTutorEvaluation",
     "CourseClassContent",
 ]

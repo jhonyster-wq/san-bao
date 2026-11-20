@@ -363,3 +363,281 @@ def test_clinical_practice_hours_logging(client):
     )
     assert summary_res.status_code == 200
     assert summary_res.json()["data"]["total_approved_hours"] == 7
+
+
+def test_fase5_finance_exemptions_packs_reversals_oc_3way_reconciliation_dte_and_honorarios(client, db_session):
+    """
+    Fase 5:
+    - E.1: Excepciones de cobro académico (PAGADO, PENDIENTE, MOROSO, EXENTO; tipos BECA, PRÁCTICA, CONGELAMIENTO) sin eliminar cargo.
+    - E.2: Packs de sesiones clínicas con estados VIGENTE, AGOTADO, ANULADO.
+    - E.3: Reversos de pagos sin eliminar el pago original, con motivo, usuario responsable, fecha, monto y referencia contable.
+    - E.4, E.5 y E.6: Tesorería dual por sociedad, Órdenes de Compra obligatorias imputadas a centro de costo y alertas de sobregiro.
+    - F: Conciliación bancaria automática de 3 vías (Cartola <-> Pagos <-> Asientos), cola de revisión e impedimento de doble conciliación.
+    - G: DTE SII con clasificación tributaria parametrizable y bloqueo de doble emisión por operación.
+    - H: Liquidación de honorarios Ley 21.133 desde horas académicas y clínicas validadas (Bruto = horas x valor hora, Retención = bruto x tasa vigente, Líquido = bruto - retención).
+    """
+    from app.modules.finance.models.commitment import Payment, Installment, FinanceJournalEntry
+    from app.modules.clinical.models.patient import Patient
+    from app.modules.institutional.models.person import Person
+
+    token, instituto_id = get_auth_token_and_instituto(client)
+    headers = {"Authorization": f"Bearer {token}", "X-Company-ID": instituto_id}
+
+    # Inicializar datos maestros del hub financiero
+    col_res = client.get("/api/v1/finance/hub/collections", headers=headers)
+    assert col_res.status_code == 200
+
+    # E.1: Aplicar excepción de cobro académico (BECA) sobre una cuota pendiente sin eliminar el cargo original
+    target_inst = db_session.query(Installment).filter(Installment.balance > 0).first()
+    assert target_inst is not None
+    original_charge = float(target_inst.amount)
+
+    ex_res = client.post(
+        f"/api/v1/finance/hub/installments/{target_inst.id}/apply-exemption",
+        headers=headers,
+        json={
+            "exemption_type": "BECA",
+            "reason": "Beca de Excelencia Académica Semestre 2026-2",
+            "valid_from": "2026-08-01",
+            "valid_until": "2026-12-31",
+            "authorized_by": "Comité de Becas & Dirección de Finanzas",
+        },
+    )
+    assert ex_res.status_code == 200
+    ex_data = ex_res.json()["data"]
+    assert ex_data["status"] == "EXENTO"
+    assert ex_data["exemption_type"] == "BECA"
+    assert ex_data["original_charge_amount_preserved"] == original_charge
+    assert ex_data["current_balance"] == 0.0
+
+    # E.2: Packs de sesiones clínicas (VIGENTE -> AGOTADO -> ANULADO)
+    patient = db_session.query(Patient).first()
+    if not patient:
+        person = db_session.query(Person).first()
+        patient = Patient(person_id=person.id, record_number="FICH-2026-8801", is_active=True)
+        db_session.add(patient)
+        db_session.commit()
+
+    pack_res = client.post(
+        "/api/v1/finance/hub/clinical-packs",
+        headers=headers,
+        json={
+            "patient_id": patient.id,
+            "service_type": "ACUPUNTURA",
+            "total_sessions": 2,
+            "used_sessions": 1,
+            "amount_paid_clp": 65000,
+            "cost_center": "CC-201 Clínica San Bao - Acupuntura Providencia",
+        },
+    )
+    assert pack_res.status_code == 201
+    pack_data = pack_res.json()["data"]
+    pack_id = pack_data["pack_id"]
+    assert pack_data["status"] == "VIGENTE"
+
+    # Consumir la sesión restante -> pasa a AGOTADO
+    pack_use_res = client.put(
+        f"/api/v1/finance/hub/clinical-packs/{pack_id}/status",
+        headers=headers,
+        json={"action": "CONSUME", "sessions_to_use": 1},
+    )
+    assert pack_use_res.status_code == 200
+    assert pack_use_res.json()["data"]["status"] == "AGOTADO"
+
+    # E.3: Reversos de pagos (sin eliminar nunca el pago original)
+    target_payment = db_session.query(Payment).filter(Payment.is_reversed == False).first()
+    assert target_payment is not None
+    orig_pay_id = target_payment.id
+
+    rev_res = client.post(
+        f"/api/v1/finance/hub/payments/{orig_pay_id}/reverse",
+        headers=headers,
+        json={
+            "reason": "Devolución por pago duplicado en transferencia electrónica",
+            "responsible_user": "auditor.finanzas@sanbao.cl",
+        },
+    )
+    assert rev_res.status_code == 201
+    rev_data = rev_res.json()["data"]
+    assert rev_data["original_payment_id"] == orig_pay_id
+    assert rev_data["original_payment_preserved"] is True
+    assert rev_data["accounting_reference"].startswith("ASI-REV-")
+    # Verificar en BD que el pago original sigue existiendo
+    assert db_session.query(Payment).filter(Payment.id == orig_pay_id).first() is not None
+
+    # E.4, E.5 y E.6: Órdenes de Compra obligatorias imputadas a Centro de Costo y alerta de sobregiro
+    # 1) Intentar registrar una compra sin Orden de Compra -> bloqueado con 400
+    no_oc_res = client.post(
+        "/api/v1/finance/hub/purchases",
+        headers=headers,
+        json={"document_number": "FAC-SIN-OC-001"},
+    )
+    assert no_oc_res.status_code == 400
+
+    # 2) Emitir Orden de Compra por monto alto para verificar alerta de sobregiro e imputar compra
+    oc_res = client.post(
+        "/api/v1/finance/hub/purchase-orders",
+        headers=headers,
+        json={
+            "company_key": "clinica",
+            "supplier_rut": "76.501.220-8",
+            "supplier_name": "Importadora Insumos Acupuntura Pacífico SpA",
+            "cost_center": "CC-201 Clínica San Bao - Acupuntura Providencia",
+            "concept": "Equipamiento Electroacupuntura y Agujas Anuales",
+            "total_amount_clp": 25000000,
+        },
+    )
+    assert oc_res.status_code == 201
+    oc_data = oc_res.json()["data"]
+    assert oc_data["overdraft_alert"] is True
+    oc_id = oc_data["purchase_order_id"]
+
+    pur_res = client.post(
+        "/api/v1/finance/hub/purchases",
+        headers=headers,
+        json={"purchase_order_id": oc_id, "document_number": "FAC-CON-OC-101"},
+    )
+    assert pur_res.status_code == 201
+    assert pur_res.json()["data"]["oc_number"] == oc_data["oc_number"]
+
+    # F: Conciliación Bancaria Automática de 3 Vías (Cartola <-> Pagos <-> Asientos)
+    person = db_session.query(Person).first()
+    ref_3way = "TRF-3WAY-2026-7788"
+    p_3way = Payment(
+        company_id=instituto_id,
+        person_id=person.id,
+        payment_date=date(2026, 11, 18),
+        amount=Decimal("260000"),
+        payment_method="TRANSFER",
+        reference_number=ref_3way,
+        cost_center="CC-101 Docencia y Aranceles Escuela San Bao",
+    )
+    je_3way = FinanceJournalEntry(
+        company_id=instituto_id,
+        entry_number="ASI-3WAY-7788",
+        entry_date=date(2026, 11, 18),
+        entry_type="INGRESO",
+        glosa="Recaudación cuota arancel TRF-3WAY-2026-7788",
+        account_debit_code="1.1.01",
+        account_debit_name="Caja y Bancos",
+        account_credit_code="1.1.02",
+        account_credit_name="CxC Aranceles",
+        amount=Decimal("260000"),
+        cost_center="CC-101 Docencia y Aranceles Escuela San Bao",
+        reference_doc=ref_3way,
+        status="POSTED",
+    )
+    db_session.add_all([p_3way, je_3way])
+    db_session.commit()
+
+    rec_3way_res = client.post(
+        "/api/v1/finance/hub/reconciliation-3way/run",
+        headers=headers,
+        json={
+            "company_id": instituto_id,
+            "statement_lines": [
+                {
+                    "statement_line_code": "CART-2026-0001",
+                    "transaction_date": "2026-11-18",
+                    "reference_number": ref_3way,
+                    "description": "Abono transferencia cuota arancel",
+                    "amount_clp": 260000,
+                    "movement_nature": "ABONO",
+                },
+                {
+                    "statement_line_code": "CART-2026-0002",
+                    "transaction_date": "2026-11-18",
+                    "reference_number": "COM-BANC-99",
+                    "description": "Cargo comisión mantención cuenta corriente",
+                    "amount_clp": 14500,
+                    "movement_nature": "COMISION",
+                },
+            ],
+        },
+    )
+    assert rec_3way_res.status_code == 200
+    rec_3way_data = rec_3way_res.json()["data"]
+    assert rec_3way_data["auto_reconciled_count"] == 1
+    assert rec_3way_data["review_queue_count"] == 1
+    assert rec_3way_data["review_queue"][0]["review_status"] == "PENDIENTE_REVISION"
+
+    # Intentar conciliar el mismo movimiento bancario por segunda vez -> bloqueado con 400
+    dup_rec_res = client.post(
+        "/api/v1/finance/hub/reconciliation-3way/run",
+        headers=headers,
+        json={
+            "company_id": instituto_id,
+            "statement_lines": [
+                {
+                    "statement_line_code": "CART-2026-0001",
+                    "transaction_date": "2026-11-18",
+                    "reference_number": ref_3way,
+                    "amount_clp": 260000,
+                }
+            ],
+        },
+    )
+    assert dup_rec_res.status_code == 400
+
+    # G: Emisión controlada de DTE SII y bloqueo de doble facturación para la misma operación
+    dte_1 = client.post(
+        "/api/v1/finance/hub/dte/emit-controlled",
+        headers=headers,
+        json={
+            "company_id": instituto_id,
+            "source_operation_key": "OP-CUOTA-2026-99001",
+            "operation_type": "ARANCEL_EDUCACIONAL",
+            "receiver_rut": "19876543-0",
+            "receiver_name": "Diego Valenzuela Rojas",
+            "total_amount": 260000,
+        },
+    )
+    assert dte_1.status_code == 201
+    assert dte_1.json()["data"]["dte_type"] == 41
+
+    # Intentar emitir un segundo DTE para la misma operación OP-CUOTA-2026-99001 -> bloqueado con 400
+    dte_dup = client.post(
+        "/api/v1/finance/hub/dte/emit-controlled",
+        headers=headers,
+        json={
+            "company_id": instituto_id,
+            "source_operation_key": "OP-CUOTA-2026-99001",
+            "operation_type": "ARANCEL_EDUCACIONAL",
+            "total_amount": 260000,
+        },
+    )
+    assert dte_dup.status_code == 400
+
+    # H: Liquidación de honorarios Ley 21.133 parametrizable desde horas académicas y clínicas validadas
+    rate_res = client.put(
+        "/api/v1/finance/hub/honorarios/retention-rates",
+        headers=headers,
+        json={"period_year": 2026, "retention_rate_pct": 15.25},
+    )
+    assert rate_res.status_code == 200
+    assert rate_res.json()["data"]["retention_rate_pct"] == 15.25
+
+    liq_res = client.post(
+        "/api/v1/finance/hub/honorarios/liquidate-from-hours",
+        headers=headers,
+        json={
+            "period_year": 2026,
+            "period_month": 11,
+            "academic_hours": 12,
+            "clinical_hours": 8,
+            "hourly_rate_clp": 25000,
+            "cost_center": "CC-101 Docencia y Aranceles Escuela San Bao",
+        },
+    )
+    assert liq_res.status_code == 201
+    liq_data = liq_res.json()["data"]
+    # Total horas = 20 * $25.000 = $500.000 Bruto
+    # Retención 15.25% = $76.250
+    # Líquido = $423.750
+    assert liq_data["total_hours_validated"] == 20.0
+    assert liq_data["gross_amount_clp"] == 500000.0
+    assert liq_data["retention_rate_pct"] == 15.25
+    assert liq_data["retention_amount_clp"] == 76250.0
+    assert liq_data["net_amount_clp"] == 423750.0
+    assert "BHE-2026-" in liq_data["previred_sii_export_record"]
+

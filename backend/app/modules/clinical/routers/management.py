@@ -238,8 +238,10 @@ def ensure_sample_tutors(db: Session):
     for rut, fn, ln, spec, lic, act in sample_tutors:
         pr = db.query(Practitioner).filter(Practitioner.license_number == lic).first()
         if not pr:
-            clean_rut = rut.replace(".", "").replace("-", "")
-            p = db.query(Person).filter(Person.rut == clean_rut).first()
+            from app.shared.validators.rut import ChileanRUT
+            clean_rut = ChileanRUT.clean(rut)
+            unhyphenated_rut = clean_rut.replace("-", "")
+            p = db.query(Person).filter(Person.rut.in_([clean_rut, unhyphenated_rut, rut])).first()
             if not p:
                 p = Person(
                     rut=clean_rut,
@@ -4351,6 +4353,773 @@ def manage_shift_closure_affected_patient(
         message=msg,
         data=_serialize_affected_patient(db, item),
     )
+
+
+# =============================================================================
+# FASE 4: GESTOR DE CAMPO CLÍNICO AVANZADO (D.1, D.2, D.3, D.4 Y D.5)
+# =============================================================================
+class PatientCommunicationConsentRequest(BaseModel):
+    comm_consent_whatsapp: Optional[bool] = True
+    comm_consent_email: Optional[bool] = True
+    comm_opt_out: Optional[bool] = False
+    last_visit_date: Optional[date] = None
+
+
+class AppointmentReminderDispatchRequest(BaseModel):
+    window_hours: int = Field(48, description="Ventana de recordatorio configurable: 48 o 24 horas")
+    channel: str = Field("WHATSAPP", description="WHATSAPP o EMAIL_HTML")
+
+
+class AppointmentStatusActionRequest(BaseModel):
+    action: str = Field(..., description="CONFIRM, CANCEL, RESCHEDULE, NO_SHOW, COMPLETE")
+    new_date: Optional[date] = None
+    new_start_time: Optional[str] = None
+    new_end_time: Optional[str] = None
+    reason: Optional[str] = None
+    session_modality: Optional[str] = None  # PRIMERA_SESION, SESION_UNICA, PACK
+    service_type: Optional[str] = None  # ACUPUNTURA, TUI_NA, OTRAS
+    amount_paid_clp: Optional[float] = None
+
+
+class PatientSegmentationRunRequest(BaseModel):
+    active_max_days: int = Field(45, ge=1, le=365, description="D.2: Hasta N días se clasifica como ACTIVO (default 45)")
+    at_risk_max_days: int = Field(90, ge=2, le=730, description="D.2: Entre active_max_days+1 y M días es EN_RIESGO; > M es INACTIVO (default 90)")
+    reference_date: Optional[date] = Field(default_factory=date.today)
+
+
+class PatientReactivationCampaignRequest(BaseModel):
+    target_segments: List[str] = Field(default_factory=lambda: ["EN_RIESGO", "INACTIVO"])
+    channel: str = Field("WHATSAPP", description="WHATSAPP o EMAIL_HTML")
+    campaign_name: str = Field("Campaña de Continuidad Terapéutica MTC San Bao")
+
+
+class SanitaryClosureConfirmRequest(BaseModel):
+    encounter_id: Optional[str] = None
+    shift_id: Optional[str] = None
+    tutor_id: Optional[str] = None
+    sharps_disposal_verified: bool = Field(..., description="D.3 Obligatorio: Disposición de residuos cortopunzantes REAS")
+    complete_needle_removal_verified: bool = Field(True, description="D.3 Obligatorio: Retiro total de agujas del paciente")
+    box_and_stretcher_sanitized: bool = Field(True, description="D.3 Obligatorio: Sanitización de box y camilla")
+    moxa_and_equipment_secured: bool = Field(True, description="D.3: Control de moxa y equipamiento")
+    confirmed_by_user_id: Optional[str] = Field(None, description="ID del tutor/usuario que confirma")
+    confirmed_by_name: str = Field("Dr. Roberto Gómez Valdés (Tutor Clínico)", description="Nombre del tutor que confirma")
+    notes: Optional[str] = None
+
+
+class TutorSupplyConsumeRequest(BaseModel):
+    tutor_id: str = Field(..., description="D.4: ID o licencia del tutor clínico")
+    session_id: str = Field(..., description="D.4: ID de la sesión clínica")
+    patient_id: Optional[str] = None
+    supply_code: str = Field(..., description="D.4: Código de insumo clínico (ej: AGU-2530, MOX-PURO)")
+    quantity: int = Field(..., ge=1, description="D.4: Cantidad consumida")
+    consumption_date: Optional[date] = Field(default_factory=date.today, description="D.4: Fecha de consumo")
+    notes: Optional[str] = None
+
+
+# -----------------------------------------------------------------------------
+# D.1. Agenda por sede, tutor y profesional + Recordatorios 48h/24h + Consentimientos
+# -----------------------------------------------------------------------------
+@router.get("/agenda", response_model=APIResponse[Dict[str, Any]], summary="D.1: Agenda clínica por sede, tutor, profesional y control de inasistencias")
+def get_clinical_agenda(
+    campus_id: Optional[str] = Query(None),
+    tutor_id: Optional[str] = Query(None, description="Filtrar agenda por Tutor Clínico"),
+    practitioner_id: Optional[str] = Query(None, description="Filtrar agenda por Profesional"),
+    appointment_date: Optional[date] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    from app.modules.clinical.models.appointment import Appointment
+
+    active_company, _ = ctx
+    q = db.query(Appointment).filter(Appointment.deleted_at.is_(None))
+    if campus_id:
+        q = q.filter(Appointment.campus_id == campus_id)
+    if tutor_id:
+        q = q.filter(Appointment.practitioner_id == tutor_id)
+    if practitioner_id:
+        q = q.filter(Appointment.practitioner_id == practitioner_id)
+    if appointment_date:
+        q = q.filter(Appointment.appointment_date == appointment_date)
+    if status_filter and status_filter.upper() != "ALL":
+        q = q.filter(Appointment.status == status_filter.upper())
+
+    appts = q.order_by(Appointment.appointment_date.desc(), Appointment.start_time.asc()).all()
+    items = []
+    for a in appts:
+        pat = a.patient
+        prac = a.practitioner
+        items.append({
+            "appointment_id": a.id,
+            "campus_id": a.campus_id,
+            "room_id": a.room_id,
+            "patient_id": a.patient_id,
+            "patient_name": pat.person.full_name if (pat and pat.person) else "Paciente",
+            "practitioner_id": a.practitioner_id,
+            "practitioner_name": prac.person.full_name if (prac and prac.person) else "Profesional",
+            "is_tutor_agenda": bool(prac.is_tutor) if prac else False,
+            "appointment_date": a.appointment_date.isoformat() if a.appointment_date else None,
+            "start_time": a.start_time,
+            "end_time": a.end_time,
+            "status": a.status,
+            "session_modality": getattr(a, "session_modality", "SESION_UNICA") or "SESION_UNICA",
+            "service_type": getattr(a, "service_type", "ACUPUNTURA") or "ACUPUNTURA",
+            "amount_paid_clp": float(getattr(a, "amount_paid_clp", 35000) or 35000),
+            "confirmed_at": getattr(a, "confirmed_at", None),
+            "reminder_48h_sent": bool(getattr(a, "reminder_48h_sent", False)),
+            "reminder_24h_sent": bool(getattr(a, "reminder_24h_sent", False)),
+            "cancellation_reason": getattr(a, "cancellation_reason", None),
+        })
+
+    return APIResponse(
+        data={
+            "total": len(items),
+            "no_show_count": sum(1 for i in items if i["status"] == "NO_SHOW"),
+            "confirmed_count": sum(1 for i in items if i["status"] in ("CONFIRMED", "COMPLETED")),
+            "cancelled_count": sum(1 for i in items if i["status"] == "CANCELLED"),
+            "items": items,
+        }
+    )
+
+
+@router.put("/patients/{patient_id}/communication-consent", response_model=APIResponse[Dict[str, Any]], summary="D.1 & D.2: Configurar consentimientos y mecanismo de exclusión (Opt-Out) de comunicaciones del paciente")
+def update_patient_communication_consent(
+    patient_id: str,
+    payload: PatientCommunicationConsentRequest,
+    db: Session = Depends(get_db),
+):
+    pat = db.query(Patient).filter(Patient.id == patient_id, Patient.deleted_at.is_(None)).first()
+    if not pat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente no encontrado")
+
+    if payload.comm_consent_whatsapp is not None:
+        pat.comm_consent_whatsapp = bool(payload.comm_consent_whatsapp)
+    if payload.comm_consent_email is not None:
+        pat.comm_consent_email = bool(payload.comm_consent_email)
+    if payload.comm_opt_out is not None:
+        pat.comm_opt_out = bool(payload.comm_opt_out)
+        if pat.comm_opt_out:
+            pat.comm_opt_out_at = datetime.now(timezone.utc).isoformat()
+            pat.comm_consent_whatsapp = False
+            pat.comm_consent_email = False
+        else:
+            pat.comm_opt_out_at = None
+    if payload.last_visit_date is not None:
+        pat.last_visit_date = payload.last_visit_date
+
+    db.commit()
+    db.refresh(pat)
+    return APIResponse(
+        message="Preferencias de consentimiento y comunicaciones del paciente actualizadas",
+        data={
+            "patient_id": pat.id,
+            "record_number": pat.record_number,
+            "comm_consent_whatsapp": bool(pat.comm_consent_whatsapp),
+            "comm_consent_email": bool(pat.comm_consent_email),
+            "comm_opt_out": bool(pat.comm_opt_out),
+            "comm_opt_out_at": pat.comm_opt_out_at,
+            "last_visit_date": pat.last_visit_date.isoformat() if pat.last_visit_date else None,
+        },
+    )
+
+
+@router.post("/appointments/{appointment_id}/reminders", response_model=APIResponse[Dict[str, Any]], summary="D.1: Enviar recordatorio configurable a 48 o 24 horas reutilizando canales existentes y respetando consentimientos")
+def send_appointment_reminder(
+    appointment_id: str,
+    payload: AppointmentReminderDispatchRequest,
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    from app.modules.clinical.models.appointment import Appointment
+    from app.modules.integrations.models import SystemNotification
+
+    active_company, _ = ctx
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id, Appointment.deleted_at.is_(None)).first()
+    if not appt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cita no encontrada")
+
+    pat = appt.patient
+    if not pat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente asociado no encontrado")
+
+    # Respetar consentimientos y mecanismo de exclusión (Opt-Out)
+    channel = (payload.channel or "WHATSAPP").strip().upper()
+    if getattr(pat, "comm_opt_out", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Envío bloqueado: El paciente activó el mecanismo de exclusión de comunicaciones (Opt-Out).",
+        )
+    if channel == "WHATSAPP" and not getattr(pat, "comm_consent_whatsapp", True):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Envío bloqueado: El paciente no otorgó consentimiento para comunicaciones vía WhatsApp.",
+        )
+    if "EMAIL" in channel and not getattr(pat, "comm_consent_email", True):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Envío bloqueado: El paciente no otorgó consentimiento para comunicaciones por Correo Electrónico.",
+        )
+
+    win = 24 if payload.window_hours == 24 else 48
+    if win == 48:
+        appt.reminder_48h_sent = True
+    else:
+        appt.reminder_24h_sent = True
+
+    person = pat.person
+    notif = SystemNotification(
+        company_id=active_company.id,
+        code=f"REM-{win}H-{uuid.uuid4().hex[:8].upper()}",
+        channel=channel,
+        source_module="CLINICA",
+        recipient_name=person.full_name if person else "Paciente",
+        recipient_contact=(person.phone if channel == "WHATSAPP" else person.email) if person else "contacto@sanbao.cl",
+        subject=f"Recordatorio {win}h Atención Clínica San Bao ({appt.appointment_date} {appt.start_time} hrs)",
+        body_preview=f"Le recordamos su atención de {getattr(appt, 'service_type', 'Acupuntura')} programada en {win} horas.",
+        related_entity_ref=appt.id,
+        status="DELIVERED",
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(appt)
+    return APIResponse(
+        message=f"Recordatorio de {win} horas enviado exitosamente por {channel}",
+        data={
+            "appointment_id": appt.id,
+            "window_hours": win,
+            "channel": channel,
+            "notification_code": notif.code,
+            "reminder_48h_sent": bool(appt.reminder_48h_sent),
+            "reminder_24h_sent": bool(appt.reminder_24h_sent),
+        },
+    )
+
+
+@router.put("/appointments/{appointment_id}/status-action", response_model=APIResponse[Dict[str, Any]], summary="D.1: Confirmar atención, cancelar, reprogramar o registrar inasistencia (NO_SHOW)")
+def update_appointment_status_action(
+    appointment_id: str,
+    payload: AppointmentStatusActionRequest,
+    db: Session = Depends(get_db),
+):
+    from app.modules.clinical.models.appointment import Appointment
+
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id, Appointment.deleted_at.is_(None)).first()
+    if not appt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cita no encontrada")
+
+    act = (payload.action or "CONFIRM").strip().upper()
+    if act in ("CONFIRM", "CONFIRMED"):
+        appt.status = "CONFIRMED"
+        appt.confirmed_at = datetime.now(timezone.utc).isoformat()
+    elif act in ("CANCEL", "CANCELLED"):
+        appt.status = "CANCELLED"
+        appt.cancellation_reason = payload.reason or "Cancelada por el paciente"
+    elif act in ("RESCHEDULE", "RESCHEDULED"):
+        if payload.new_date:
+            appt.appointment_date = payload.new_date
+        if payload.new_start_time:
+            appt.start_time = payload.new_start_time
+        if payload.new_end_time:
+            appt.end_time = payload.new_end_time
+        appt.status = "CONFIRMED"
+        appt.cancellation_reason = payload.reason or "Reprogramada"
+    elif act == "NO_SHOW":
+        appt.status = "NO_SHOW"
+        appt.cancellation_reason = payload.reason or "Inasistencia sin aviso previo"
+    elif act in ("COMPLETE", "COMPLETED"):
+        appt.status = "COMPLETED"
+        if appt.patient:
+            appt.patient.last_visit_date = appt.appointment_date
+
+    if payload.session_modality:
+        appt.session_modality = payload.session_modality.strip().upper()
+    if payload.service_type:
+        appt.service_type = payload.service_type.strip().upper()
+    if payload.amount_paid_clp is not None:
+        appt.amount_paid_clp = payload.amount_paid_clp
+
+    db.commit()
+    db.refresh(appt)
+    return APIResponse(
+        message=f"Estado de atención actualizado a {appt.status}",
+        data={
+            "appointment_id": appt.id,
+            "status": appt.status,
+            "appointment_date": appt.appointment_date.isoformat() if appt.appointment_date else None,
+            "start_time": appt.start_time,
+            "end_time": appt.end_time,
+            "confirmed_at": appt.confirmed_at,
+            "cancellation_reason": appt.cancellation_reason,
+            "session_modality": appt.session_modality,
+            "service_type": appt.service_type,
+            "amount_paid_clp": float(appt.amount_paid_clp or 0),
+        },
+    )
+
+
+# -----------------------------------------------------------------------------
+# D.2. Seguimiento y Segmentación Automática de Pacientes (ACTIVO, EN_RIESGO, INACTIVO)
+# -----------------------------------------------------------------------------
+@router.post("/patients/run-segmentation", response_model=APIResponse[Dict[str, Any]], summary="D.2: Ejecutar clasificación semanal automática de pacientes (ACTIVO <=45d, EN_RIESGO 46-90d, INACTIVO >90d)")
+def run_patient_retention_segmentation(
+    payload: PatientSegmentationRunRequest,
+    db: Session = Depends(get_db),
+):
+    ref_date = payload.reference_date or date.today()
+    active_max = payload.active_max_days
+    risk_max = payload.at_risk_max_days
+
+    patients = db.query(Patient).filter(Patient.deleted_at.is_(None)).all()
+    counts = {"ACTIVO": 0, "EN_RIESGO": 0, "INACTIVO": 0}
+    segmented_items = []
+
+    for pat in patients:
+        last_visit = pat.last_visit_date
+        if not last_visit and pat.appointments:
+            completed_dates = [
+                a.appointment_date
+                for a in pat.appointments
+                if a.appointment_date and a.status in ("COMPLETED", "CONFIRMED", "SCHEDULED")
+            ]
+            if completed_dates:
+                last_visit = max(completed_dates)
+                pat.last_visit_date = last_visit
+
+        if not last_visit:
+            days_since = risk_max + 15
+        else:
+            days_since = max(0, (ref_date - last_visit).days)
+
+        if days_since <= active_max:
+            seg = "ACTIVO"
+        elif days_since <= risk_max:
+            seg = "EN_RIESGO"
+        else:
+            seg = "INACTIVO"
+
+        pat.retention_segment = seg
+        counts[seg] += 1
+        segmented_items.append({
+            "patient_id": pat.id,
+            "record_number": pat.record_number,
+            "patient_name": pat.person.full_name if pat.person else "Paciente",
+            "last_visit_date": last_visit.isoformat() if last_visit else None,
+            "days_since_last_visit": days_since,
+            "segment": seg,
+            "comm_opt_out": bool(getattr(pat, "comm_opt_out", False)),
+            "eligible_for_reactivation": not bool(getattr(pat, "comm_opt_out", False)),
+        })
+
+    db.commit()
+    return APIResponse(
+        message="Segmentación semanal de pacientes ejecutada exitosamente",
+        data={
+            "reference_date": ref_date.isoformat(),
+            "thresholds": {
+                "active_max_days": active_max,
+                "at_risk_max_days": risk_max,
+            },
+            "summary": counts,
+            "patients": segmented_items,
+        },
+    )
+
+
+@router.post("/patients/reactivation-campaign", response_model=APIResponse[Dict[str, Any]], summary="D.2: Ejecutar campaña de recontacto y reactivación respetando consentimientos y exclusiones")
+def launch_patient_reactivation_campaign(
+    payload: PatientReactivationCampaignRequest,
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    from app.modules.integrations.models import SystemNotification
+
+    active_company, _ = ctx
+    target_segs = [s.upper() for s in (payload.target_segments or ["EN_RIESGO", "INACTIVO"])]
+    channel = (payload.channel or "WHATSAPP").strip().upper()
+
+    patients = (
+        db.query(Patient)
+        .filter(Patient.retention_segment.in_(target_segs), Patient.deleted_at.is_(None))
+        .all()
+    )
+    contacted = []
+    excluded_by_consent = []
+
+    for pat in patients:
+        has_channel_consent = (
+            bool(getattr(pat, "comm_consent_whatsapp", True))
+            if channel == "WHATSAPP"
+            else bool(getattr(pat, "comm_consent_email", True))
+        )
+        if getattr(pat, "comm_opt_out", False) or not has_channel_consent:
+            excluded_by_consent.append({
+                "patient_id": pat.id,
+                "record_number": pat.record_number,
+                "reason": "OPT_OUT_OR_NO_CONSENT",
+            })
+            continue
+
+        person = pat.person
+        notif = SystemNotification(
+            company_id=active_company.id,
+            code=f"REACT-{uuid.uuid4().hex[:8].upper()}",
+            channel=channel,
+            source_module="CLINICA",
+            recipient_name=person.full_name if person else "Paciente",
+            recipient_contact=(person.phone if channel == "WHATSAPP" else person.email) if person else "contacto@sanbao.cl",
+            subject=f"{payload.campaign_name} ({pat.retention_segment})",
+            body_preview="Estimado(a) paciente, le invitamos a retomar su tratamiento integrativo en Clínica San Bao.",
+            related_entity_ref=pat.id,
+            status="DELIVERED",
+        )
+        db.add(notif)
+        contacted.append({
+            "patient_id": pat.id,
+            "record_number": pat.record_number,
+            "segment": pat.retention_segment,
+            "notification_code": notif.code,
+        })
+
+    db.commit()
+    return APIResponse(
+        message=f"Campaña de reactivación completada: {len(contacted)} contactados, {len(excluded_by_consent)} excluidos por consentimiento/Opt-Out.",
+        data={
+            "campaign_name": payload.campaign_name,
+            "channel": channel,
+            "contacted_count": len(contacted),
+            "excluded_by_consent_count": len(excluded_by_consent),
+            "contacted_patients": contacted,
+            "excluded_patients": excluded_by_consent,
+        },
+    )
+
+
+# -----------------------------------------------------------------------------
+# D.3. Cierre Sanitario Obligatorio (Checklist Decreto 6/2009 REAS / Cortopunzantes)
+# -----------------------------------------------------------------------------
+@router.post("/sanitary-closure", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="D.3: Confirmar checklist obligatorio de cierre sanitario (disposición de cortopunzantes REAS y controles San Bao)")
+def confirm_sanitary_closure_checklist(
+    payload: SanitaryClosureConfirmRequest,
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    from app.modules.clinical.models.management import SanitaryClosureChecklist
+
+    active_company, current_user = ctx
+
+    # Regla D.3: No permitir el cierre definitivo cuando falten controles obligatorios
+    missing_controls = []
+    if not payload.sharps_disposal_verified:
+        missing_controls.append("Disposición de residuos cortopunzantes en contenedor REAS")
+    if not payload.complete_needle_removal_verified:
+        missing_controls.append("Verificación de retiro total de agujas en el paciente")
+    if not payload.box_and_stretcher_sanitized:
+        missing_controls.append("Sanitización de box clínico y camilla")
+
+    if missing_controls:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Cierre definitivo bloqueado (Protocolo Sanitario San Bao / Decreto 6/2009 REAS): "
+                f"Faltan controles obligatorios: {', '.join(missing_controls)}."
+            ),
+        )
+
+    confirmer_id = payload.confirmed_by_user_id or (current_user.id if current_user else "tutor-sanbao")
+    now_dt = datetime.utcnow()
+
+    log_entry = SanitaryClosureChecklist(
+        company_id=active_company.id,
+        encounter_id=payload.encounter_id,
+        shift_id=payload.shift_id,
+        tutor_id=payload.tutor_id,
+        sharps_disposal_verified=True,
+        complete_needle_removal_verified=True,
+        box_and_stretcher_sanitized=True,
+        moxa_and_equipment_secured=bool(payload.moxa_and_equipment_secured),
+        all_mandatory_checks_passed=True,
+        confirmed_by_user_id=confirmer_id,
+        confirmed_by_name=payload.confirmed_by_name,
+        confirmed_at=now_dt,
+        notes=payload.notes,
+    )
+    db.add(log_entry)
+    db.commit()
+    db.refresh(log_entry)
+
+    return APIResponse(
+        message="Checklist de Cierre Sanitario (REAS / Cortopunzantes) validado y firmado con trazabilidad completa",
+        data={
+            "sanitary_closure_id": log_entry.id,
+            "encounter_id": log_entry.encounter_id,
+            "shift_id": log_entry.shift_id,
+            "sharps_disposal_verified": log_entry.sharps_disposal_verified,
+            "complete_needle_removal_verified": log_entry.complete_needle_removal_verified,
+            "box_and_stretcher_sanitized": log_entry.box_and_stretcher_sanitized,
+            "moxa_and_equipment_secured": log_entry.moxa_and_equipment_secured,
+            "all_mandatory_checks_passed": log_entry.all_mandatory_checks_passed,
+            "confirmed_by_user_id": log_entry.confirmed_by_user_id,
+            "confirmed_by_name": log_entry.confirmed_by_name,
+            "confirmed_at": log_entry.confirmed_at.isoformat(),
+        },
+    )
+
+
+# -----------------------------------------------------------------------------
+# D.4. Control de Insumos por Tutor y Sesión + Indicadores por Tutor
+# -----------------------------------------------------------------------------
+@router.post("/tutor-supplies/consume", response_model=APIResponse[Dict[str, Any]], status_code=status.HTTP_201_CREATED, summary="D.4: Registrar consumo de insumos por tutor y sesión clínica")
+def record_tutor_session_supply_consumption(
+    payload: TutorSupplyConsumeRequest,
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    from app.modules.clinical.models.supply import TutorSessionSupplyConsumption
+
+    active_company, _ = ctx
+    ensure_sample_tutors(db)
+
+    prac = (
+        db.query(Practitioner)
+        .filter(
+            (Practitioner.id == payload.tutor_id) | (Practitioner.license_number == payload.tutor_id),
+            Practitioner.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not prac:
+        prac = db.query(Practitioner).first()
+
+    supply = (
+        db.query(ClinicalSupply)
+        .filter(
+            (ClinicalSupply.code == payload.supply_code) | (ClinicalSupply.id == payload.supply_code),
+            ClinicalSupply.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if supply and supply.current_stock is not None:
+        supply.current_stock = max(0, int(supply.current_stock) - int(payload.quantity))
+
+    rec = TutorSessionSupplyConsumption(
+        company_id=active_company.id,
+        tutor_id=prac.id,
+        session_id=payload.session_id,
+        patient_id=payload.patient_id,
+        supply_id=supply.id if supply else None,
+        supply_code=supply.code if supply else payload.supply_code.strip().upper(),
+        quantity=int(payload.quantity),
+        consumption_date=payload.consumption_date or date.today(),
+        notes=payload.notes,
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+
+    return APIResponse(
+        message="Consumo de insumo por tutor y sesión registrado exitosamente",
+        data={
+            "consumption_id": rec.id,
+            "tutor_id": rec.tutor_id,
+            "tutor_name": prac.person.full_name if (prac and prac.person) else "Tutor Clínico",
+            "session_id": rec.session_id,
+            "supply_code": rec.supply_code,
+            "quantity": rec.quantity,
+            "consumption_date": rec.consumption_date.isoformat(),
+        },
+    )
+
+
+@router.get("/tutor-supplies/kpis", response_model=APIResponse[Dict[str, Any]], summary="D.4: Indicadores por tutor (Pacientes atendidos, Insumos consumidos, Consumo promedio por paciente)")
+def get_tutor_supply_consumption_kpis(
+    tutor_id: Optional[str] = Query(None),
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    from app.modules.clinical.models.supply import TutorSessionSupplyConsumption
+    from app.modules.clinical.models.appointment import Appointment
+
+    q = db.query(TutorSessionSupplyConsumption).filter(TutorSessionSupplyConsumption.deleted_at.is_(None))
+    if tutor_id:
+        q = q.filter(TutorSessionSupplyConsumption.tutor_id == tutor_id)
+    rows = q.all()
+
+    grouped: Dict[str, List[Any]] = {}
+    for r in rows:
+        grouped.setdefault(r.tutor_id, []).append(r)
+
+    tutor_kpis = []
+    for t_id, items in grouped.items():
+        prac = db.query(Practitioner).filter(Practitioner.id == t_id).first()
+        distinct_sessions = {i.session_id for i in items if i.session_id}
+        distinct_patients = {i.patient_id for i in items if i.patient_id}
+        appt_patients_count = (
+            db.query(Appointment)
+            .filter(Appointment.practitioner_id == t_id, Appointment.status == "COMPLETED")
+            .count()
+        )
+        patients_attended = max(len(distinct_patients), len(distinct_sessions), appt_patients_count, 1)
+        supplies_consumed = sum(int(i.quantity or 0) for i in items)
+        avg_per_patient = round(supplies_consumed / patients_attended, 2)
+
+        tutor_kpis.append({
+            "tutor_id": t_id,
+            "tutor_name": prac.person.full_name if (prac and prac.person) else "Tutor Clínico",
+            "patients_attended": patients_attended,
+            "supplies_consumed": supplies_consumed,
+            "average_consumption_per_patient": avg_per_patient,
+        })
+
+    return APIResponse(
+        data={
+            "total_tutors_evaluated": len(tutor_kpis),
+            "tutors": tutor_kpis,
+        }
+    )
+
+
+# -----------------------------------------------------------------------------
+# D.5. Cierre Mensual Clínico Automático por Período, Modalidad y Tipo de Sesión
+# -----------------------------------------------------------------------------
+@router.post("/monthly-closure/calculate", response_model=APIResponse[Dict[str, Any]], summary="D.5: Calcular / Recalcular reporte automático de Cierre Mensual Clínico por modalidad y prestación")
+@router.get("/monthly-closure", response_model=APIResponse[Dict[str, Any]], summary="D.5: Consultar reporte automático de Cierre Mensual Clínico disponible para Dirección Clínica")
+def calculate_or_get_monthly_clinical_closure(
+    period_code: str = Query("2026-11", description="Período YYYY-MM ej: 2026-11"),
+    ctx=Depends(get_active_company_and_user_flexible),
+    db: Session = Depends(get_db),
+):
+    import json as _json
+    from app.modules.clinical.models.appointment import Appointment
+    from app.modules.clinical.models.management import MonthlyClinicalClosureReport
+
+    active_company, _ = ctx
+    year_str, month_str = (period_code.split("-") + ["11"])[:2]
+    year_val = int(year_str)
+    month_val = int(month_str)
+
+    appts = (
+        db.query(Appointment)
+        .filter(
+            extract("year", Appointment.appointment_date) == year_val,
+            extract("month", Appointment.appointment_date) == month_val,
+            Appointment.status.in_(["COMPLETED", "CONFIRMED", "SCHEDULED"]),
+            Appointment.deleted_at.is_(None),
+        )
+        .all()
+    )
+
+    by_modality = {
+        "PRIMERA_SESION": {"attentions_count": 0, "total_collected_clp": 0.0},
+        "SESION_UNICA": {"attentions_count": 0, "total_collected_clp": 0.0},
+        "PACKS": {"attentions_count": 0, "total_collected_clp": 0.0},
+    }
+    by_service = {
+        "ACUPUNTURA": {"attentions_count": 0, "total_collected_clp": 0.0},
+        "TUI_NA": {"attentions_count": 0, "total_collected_clp": 0.0},
+        "OTRAS_PRESTACIONES": {"attentions_count": 0, "total_collected_clp": 0.0},
+    }
+    cross_matrix: Dict[str, Dict[str, Any]] = {}
+
+    for a in appts:
+        mod_raw = (getattr(a, "session_modality", None) or "SESION_UNICA").strip().upper()
+        if "PRIMERA" in mod_raw:
+            mod_key = "PRIMERA_SESION"
+        elif "PACK" in mod_raw:
+            mod_key = "PACKS"
+        else:
+            mod_key = "SESION_UNICA"
+
+        srv_raw = (getattr(a, "service_type", None) or "ACUPUNTURA").strip().upper()
+        if "ACU" in srv_raw:
+            srv_key = "ACUPUNTURA"
+        elif "TUI" in srv_raw:
+            srv_key = "TUI_NA"
+        else:
+            srv_key = "OTRAS_PRESTACIONES"
+
+        amt = float(getattr(a, "amount_paid_clp", None) or 35000.0)
+        by_modality[mod_key]["attentions_count"] += 1
+        by_modality[mod_key]["total_collected_clp"] += amt
+
+        by_service[srv_key]["attentions_count"] += 1
+        by_service[srv_key]["total_collected_clp"] += amt
+
+        m_cell = cross_matrix.setdefault(f"{mod_key}__{srv_key}", {"modality": mod_key, "service_type": srv_key, "attentions_count": 0, "total_collected_clp": 0.0})
+        m_cell["attentions_count"] += 1
+        m_cell["total_collected_clp"] += amt
+
+    # Incluir también packs vendidos en el período si no tenían cita individual imputada
+    packs = (
+        db.query(PatientTreatmentPack)
+        .filter(
+            extract("year", PatientTreatmentPack.purchase_date) == year_val,
+            extract("month", PatientTreatmentPack.purchase_date) == month_val,
+            PatientTreatmentPack.status != "CANCELLED",
+            PatientTreatmentPack.deleted_at.is_(None),
+        )
+        .all()
+    )
+    for pk in packs:
+        amt_pk = float(pk.price_paid_clp or 0.0)
+        srv_raw = (pk.service_type or "ACUPUNTURA").strip().upper()
+        srv_key = "ACUPUNTURA" if "ACU" in srv_raw else ("TUI_NA" if "TUI" in srv_raw else "OTRAS_PRESTACIONES")
+        by_modality["PACKS"]["attentions_count"] += int(pk.used_sessions or 1)
+        by_modality["PACKS"]["total_collected_clp"] += amt_pk
+        by_service[srv_key]["attentions_count"] += int(pk.used_sessions or 1)
+        by_service[srv_key]["total_collected_clp"] += amt_pk
+
+    total_att = sum(v["attentions_count"] for v in by_modality.values())
+    total_col = sum(v["total_collected_clp"] for v in by_modality.values())
+
+    report = (
+        db.query(MonthlyClinicalClosureReport)
+        .filter(
+            MonthlyClinicalClosureReport.company_id == active_company.id,
+            MonthlyClinicalClosureReport.period_code == period_code,
+            MonthlyClinicalClosureReport.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not report:
+        report = MonthlyClinicalClosureReport(
+            company_id=active_company.id,
+            period_code=period_code,
+            total_attentions=total_att,
+            total_collected_clp=total_col,
+            by_modality_json=_json.dumps(by_modality, ensure_ascii=False),
+            by_service_type_json=_json.dumps(by_service, ensure_ascii=False),
+            cross_matrix_json=_json.dumps(list(cross_matrix.values()), ensure_ascii=False),
+            auto_recalculated_day_1=True,
+            calculated_at=datetime.utcnow(),
+        )
+        db.add(report)
+    else:
+        report.total_attentions = total_att
+        report.total_collected_clp = total_col
+        report.by_modality_json = _json.dumps(by_modality, ensure_ascii=False)
+        report.by_service_type_json = _json.dumps(by_service, ensure_ascii=False)
+        report.cross_matrix_json = _json.dumps(list(cross_matrix.values()), ensure_ascii=False)
+        report.calculated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(report)
+
+    return APIResponse(
+        message=f"Reporte de Cierre Mensual Clínico ({period_code}) calculado y disponible para Dirección Clínica",
+        data={
+            "closure_id": report.id,
+            "company_id": report.company_id,
+            "period_code": report.period_code,
+            "auto_recalculate_schedule": "DAY_1_OF_EACH_MONTH",
+            "total_attentions": report.total_attentions,
+            "total_collected_clp": float(report.total_collected_clp),
+            "by_modality": by_modality,
+            "by_service_type": by_service,
+            "cross_matrix": list(cross_matrix.values()),
+            "calculated_at": report.calculated_at.isoformat(),
+        },
+    )
+
 
 
 

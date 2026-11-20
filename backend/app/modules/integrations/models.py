@@ -84,6 +84,12 @@ class DTEDocument(Base):
     digital_stamp = Column(Text, nullable=True)  # Timbre Electrónico DTE (TED)
     pdf_url = Column(String(255), nullable=True)
     reference_id = Column(UUID(as_uuid=True), nullable=True)  # e.g. order_id, installment_id
+    source_operation_key = Column(String(120), nullable=True, index=True, comment="G: Identificador único de la operación para impedir doble emisión DTE")
+    tax_classification_code = Column(String(60), nullable=True, comment="G: Clasificación tributaria aplicada")
+    contingency_mode = Column(Boolean, default=False, nullable=False, comment="G: True si quedó en cola de contingencia SII")
+    retry_count = Column(Integer, default=0, nullable=False, comment="G: Cantidad de reintentos de envío al SII")
+    rejection_reason = Column(String(255), nullable=True, comment="G: Motivo de rechazo SII si aplica")
+    related_dte_id = Column(String(36), nullable=True, comment="G: DTE original referenciado por Nota de Crédito 61")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -207,6 +213,76 @@ class IntegrationOperationLog(Base):
     error_detail = Column(Text, nullable=True)
     trace_hash = Column(String(64), nullable=False)
     payload_summary = Column(Text, nullable=True)
+
+    # Fase 7 (Requerimiento J): Idempotencia, Backoff Exponencial y Cola de Mensajes Fallidos (DLQ)
+    idempotency_key = Column(String(120), unique=True, nullable=True, index=True, comment="J: Clave de idempotencia y control de duplicados")
+    backoff_seconds = Column(Integer, default=0, nullable=False, comment="J: Backoff exponencial 2^n en segundos")
+    next_retry_at = Column(String(40), nullable=True, comment="J: Fecha/hora programada para próximo reintento")
+    dead_letter_queued = Column(Boolean, default=False, nullable=False, index=True, comment="J: True si pasó a Cola de Mensajes Fallidos (DLQ)")
+    error_alert_sent = Column(Boolean, default=False, nullable=False, comment="J: True si se disparó alerta de error")
+    payload_json = Column(Text, nullable=True, comment="J: Payload JSON completo del evento para reprocesamiento")
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class TransversalRestrictionRule(Base):
+    """
+    Motor de Reglas Configurables y Auditables para Bloqueo Transversal (Requerimiento K):
+    Distingue estrictamente el tipo de acceso y responsabilidad del usuario.
+    Garantiza que las restricciones financieras NUNCA impidan el acceso clínico necesario
+    para la continuidad de atención de un paciente (preserve_clinical_patient_continuity = True).
+    """
+
+    __tablename__ = "transversal_restriction_rules"
+    __table_args__ = {"schema": "integrations"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rule_code = Column(String(60), unique=True, nullable=False, index=True, comment="Ej: RULE-MOROSIDAD-30D")
+    name = Column(String(180), nullable=False)
+    trigger_condition = Column(String(80), nullable=False, index=True, comment="MOROSIDAD_CUOTAS, DOCUMENTO_FIRMA_PENDIENTE, SANCION_ACADEMICA")
+    min_overdue_days = Column(Integer, default=30, nullable=False)
+    restricted_scopes_json = Column(Text, nullable=False, comment="JSON de ámbitos restringidos ej: ['ACADEMIC_NEW_ENROLLMENT', 'ACADEMIC_CERTIFICATES']")
+    preserve_clinical_patient_continuity = Column(Boolean, default=True, nullable=False, comment="K: True obligatorio — no bloquea atención clínica de pacientes")
+    auto_rehabilitate_on_payment = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class TransversalRestriction(Base):
+    """
+    Restricción Transversal Activa o Histórica con Soporte de Excepciones Autorizadas y Rehabilitación Automática (Requerimiento K).
+    """
+
+    __tablename__ = "transversal_restrictions"
+    __table_args__ = {"schema": "integrations"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey("core.companies.id"), nullable=False, index=True)
+    person_id = Column(String(36), ForeignKey("core.people.id"), nullable=False, index=True)
+    student_id = Column(String(36), nullable=True, index=True)
+    rule_code = Column(String(60), nullable=False, index=True)
+    origin_condition = Column(String(200), nullable=False, comment="Condición que origina el bloqueo (ej: Morosidad > 30 días en cuota #3)")
+    restricted_scopes_json = Column(Text, nullable=False)
+    status = Column(
+        String(40),
+        default="ACTIVE",
+        nullable=False,
+        index=True,
+        comment="ACTIVE, EXCEPTION_AUTHORIZED, REHABILITATED",
+    )
+    applied_by = Column(String(150), nullable=False, comment="Responsable o motor que aplicó la restricción")
+    applied_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Excepción autorizada con vigencia
+    exception_authorized_by = Column(String(150), nullable=True)
+    exception_reason = Column(String(255), nullable=True)
+    exception_valid_from = Column(Date, nullable=True)
+    exception_valid_until = Column(Date, nullable=True)
+
+    # Rehabilitación automática o manual
+    rehabilitated_at = Column(DateTime(timezone=True), nullable=True)
+    rehabilitated_by = Column(String(150), nullable=True)
+    rehabilitation_reason = Column(String(255), nullable=True)
+
 

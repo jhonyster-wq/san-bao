@@ -37,11 +37,31 @@ class ClinicalKpis(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FinancialIntelligenceKpiItem(BaseModel):
+    code: str
+    name: str
+    value: float
+    unit: str
+    formula: str
+    data_source: str
+    involved_accounts: List[str]
+    period: str
+    null_handling: str
+    company_id: str
+    company_name: str
+    cost_center: str
+    updated_at: str
+    max_refresh_interval_hours: int = 24
+
+
 class ExecutiveDashboardResponse(BaseModel):
     company_id: Optional[UUID] = None
     company_name: Optional[str] = "Consolidado San Bao"
+    updated_at: Optional[str] = None
+    max_refresh_interval_hours: int = 24
     financial: FinancialSummary
     academic: AcademicKpis
     clinical: ClinicalKpis
+    financial_intelligence_kpis: Optional[Dict[str, FinancialIntelligenceKpiItem]] = None
 
     model_config = ConfigDict(from_attributes=True)

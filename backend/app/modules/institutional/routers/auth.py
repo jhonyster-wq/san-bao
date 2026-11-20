@@ -261,6 +261,126 @@ def get_me(
     return APIResponse(data=context)
 
 
+@router.get("/rbac-matrix", summary="Consultar Matriz Oficial de Roles y Permisos por Sociedad (Requerimiento M)")
+def get_rbac_security_matrix(db: Session = Depends(get_db)):
+    """
+    Expone la matriz RBAC activa en base de datos, incluyendo las políticas de cumplimiento:
+    - ADMIN_FINANZAS: Finanzas L/E, Académico Lectura de estado, Clínica SIN acceso a anamnesis.
+    - TUTOR_CLINICO: Clínica acceso autorizado a ficha y evaluación según responsabilidad.
+    - COORDINADOR_ACADEMICO: Académico L/E, Clínica lectura de horas de práctica.
+    - DIRECCION: Acceso a información agregada de Finanzas, Académico y Clínica.
+    """
+    from app.modules.institutional.models.rbac import Role
+
+    roles = db.query(Role).filter(Role.deleted_at.is_(None), Role.is_active == True).all()
+    roles_data = {}
+    for r in roles:
+        perm_codes = sorted([p.code for p in (r.permissions or [])])
+        roles_data[r.code] = {
+            "role_id": r.id,
+            "code": r.code,
+            "name": r.name,
+            "scope": r.scope,
+            "description": r.description,
+            "permissions": perm_codes,
+            "can_access_clinical_anamnesis": "clinical:records:read" in perm_codes or r.code == "SUPERADMIN",
+        }
+    return APIResponse(
+        message="Matriz RBAC de Seguridad y Cumplimiento San Bao",
+        data={
+            "roles": roles_data,
+            "policies": {
+                "ADMIN_FINANZAS": {
+                    "finance": "READ_WRITE",
+                    "academic": "READ_STATUS",
+                    "clinical_anamnesis": "DENIED",
+                },
+                "TUTOR_CLINICO": {
+                    "clinical": "AUTHORIZED_RECORD_AND_EVALUATION",
+                },
+                "COORDINADOR_ACADEMICO": {
+                    "academic": "READ_WRITE",
+                    "clinical": "READ_PRACTICE_HOURS",
+                },
+                "DIRECCION": {
+                    "scope": "AGGREGATED_FINANCE_ACADEMIC_CLINICAL",
+                },
+            },
+        },
+    )
+
+
+@router.get("/security-compliance-status", summary="M: Estado técnico de controles de seguridad, cifrado AES-256, gestión separada de claves y retención 15 años")
+def get_security_compliance_status(db: Session = Depends(get_db)):
+    from app.core.config import settings
+    from app.core.security import AES256FieldCipher, sanitize_sensitive_log_payload
+    from app.modules.institutional.models.audit_log import SecurityIncidentLog
+
+    sample_cipher = AES256FieldCipher.encrypt("Verificación técnica AES-256-GCM")
+    sample_plain = AES256FieldCipher.decrypt(sample_cipher)
+    redacted_demo = sanitize_sensitive_log_payload({"username": "admin", "password": "secret", "traditional_anamnesis": {"pulse": "Xian"}})
+    incidents_count = db.query(SecurityIncidentLog).count()
+
+    return APIResponse(
+        message="Diagnóstico técnico de controles de seguridad implementados (Requerimiento M)",
+        data={
+            "aes256_field_encryption_operational": sample_plain == "Verificación técnica AES-256-GCM",
+            "separate_key_management_enforced": settings.FIELD_ENCRYPTION_KEY != settings.SECRET_KEY,
+            "separate_backup_key_configured": settings.BACKUP_ENCRYPTION_KEY != settings.SECRET_KEY and settings.BACKUP_ENCRYPTION_KEY != settings.FIELD_ENCRYPTION_KEY,
+            "min_tls_version_policy": settings.MIN_TLS_VERSION,
+            "clinical_record_retention_years": settings.CLINICAL_RECORD_RETENTION_YEARS,
+            "log_protection_redaction_active": redacted_demo["password"] == "***REDACTED_PROTECTED_LOG***" and redacted_demo["traditional_anamnesis"] == "***REDACTED_PROTECTED_LOG***",
+            "security_incidents_logged_count": incidents_count,
+            "applicable_regulatory_framework_controls": [
+                "Ley 20.584 (Auditoría de accesos clínicos, conservación 15 años, portabilidad y bloqueo anamnesis a Finanzas)",
+                "Ley 19.628 y Ley 21.719 (Cifrado AES-256 de campos sensibles, consentimientos y Opt-Out)",
+                "Ley 19.799 (Firma electrónica con hash SHA-256, evidencia y sello de tiempo)",
+                "Decreto 6/2009 REAS (Checklist obligatorio de disposición de residuos cortopunzantes al cierre sanitario)",
+                "Ley 21.133 (Tasas parametrizables por período para retención de boletas de honorarios)",
+                "Ley 21.420 (Matriz parametrizable de clasificación tributaria IVA / Exento por sociedad)",
+                "Decreto 313 (Confirmación de cobertura de seguro escolar en expediente de alumno en práctica)",
+            ],
+        },
+    )
+
+
+@router.post("/security-incidents", status_code=status.HTTP_201_CREATED, summary="M: Registrar y gestionar incidente de seguridad en bitácora de auditoría")
+def create_security_incident(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    from app.modules.institutional.models.audit_log import SecurityIncidentLog
+
+    seq = db.query(SecurityIncidentLog).count() + 1
+    code = f"SEC-INC-2026-{seq:04d}"
+    inc = SecurityIncidentLog(
+        incident_code=code,
+        company_id=payload.get("company_id"),
+        reported_by_user_id=payload.get("reported_by_user_id") or "security.monitor@sanbao.cl",
+        category=str(payload.get("category") or "UNAUTHORIZED_CLINICAL_ACCESS").strip().upper(),
+        severity=str(payload.get("severity") or "ALTA").strip().upper(),
+        title=str(payload.get("title") or "Incidente de Seguridad Registrado").strip(),
+        description=str(payload.get("description") or "Detalle del incidente").strip(),
+        mitigation_action=payload.get("mitigation_action") or "Bloqueo preventivo y registro en bitácora inmutable.",
+        status=str(payload.get("status") or "CONTAINED").strip().upper(),
+    )
+    db.add(inc)
+    db.commit()
+    db.refresh(inc)
+    return APIResponse(
+        message=f"Incidente de seguridad {inc.incident_code} registrado exitosamente",
+        data={
+            "incident_id": inc.id,
+            "incident_code": inc.incident_code,
+            "category": inc.category,
+            "severity": inc.severity,
+            "title": inc.title,
+            "status": inc.status,
+            "created_at": inc.created_at.isoformat(),
+        },
+    )
+
+
 @router.get("/sso-test-users", summary="Directorio de usuarios de prueba para Login Único SSO de los 6 Portales")
 def list_sso_test_users():
     return APIResponse(

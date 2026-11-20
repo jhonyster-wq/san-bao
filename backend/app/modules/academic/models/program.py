@@ -28,6 +28,12 @@ class Program(Base, AuditMixin):
     total_theoretical_hours = Column(Integer, default=0, nullable=False)
     total_practical_hours = Column(Integer, default=0, nullable=False)
     min_clinical_hours = Column(Integer, default=0, nullable=False, comment="Horas de práctica clínica obligatorias")
+    requires_interview = Column(Boolean, default=True, nullable=False, comment="B.4: True si requiere entrevista de postulación; False para inscripción simplificada en cursos cortos/seminarios")
+    min_attendance_pct = Column(Numeric(5, 2), default=75.0, nullable=False, comment="B.5: Porcentaje de asistencia mínima parametrizable")
+    min_passing_grade = Column(Numeric(3, 1), default=4.0, nullable=True, comment="B.5: Nota mínima de aprobación cuando corresponda")
+    requires_grade_for_approval = Column(Boolean, default=True, nullable=False, comment="B.5: Indica si exige nota mínima además de asistencia")
+    auto_issue_diploma = Column(Boolean, default=True, nullable=False, comment="B.5: Generación automática de diploma al cumplir requisitos")
+    practice_max_months = Column(Integer, default=6, nullable=False, comment="B.8: Tiempo máximo estimado de práctica en meses antes de alerta")
     is_active = Column(Boolean, default=True, nullable=False)
 
     curriculums = relationship("Curriculum", back_populates="program", cascade="all, delete-orphan")
@@ -80,6 +86,10 @@ class Course(Base, AuditMixin):
     clinical_hours = Column(Integer, default=0, nullable=False, comment="Horas de atención con pacientes")
     credits = Column(Integer, default=4, nullable=False)
     is_clinical_practice = Column(Boolean, default=False, nullable=False, comment="Indica si es asignatura de campo clínico")
+    min_attendance_pct = Column(Numeric(5, 2), default=75.0, nullable=False, comment="B.5: Porcentaje de asistencia mínima parametrizable por curso")
+    min_passing_grade = Column(Numeric(3, 1), default=4.0, nullable=True, comment="B.5: Nota mínima de aprobación cuando corresponda")
+    requires_grade_for_approval = Column(Boolean, default=True, nullable=False)
+    auto_issue_diploma = Column(Boolean, default=False, nullable=False, comment="B.5: Generación automática de certificado/diploma al aprobar el curso")
     is_active = Column(Boolean, default=True, nullable=False)
 
     program = relationship("Program", back_populates="courses", foreign_keys=[program_id])

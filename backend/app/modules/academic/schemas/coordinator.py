@@ -18,6 +18,8 @@ class TransferStudentRequest(BaseModel):
     to_program_id: str = Field(..., description="ID del nuevo diplomado o curso de destino")
     reason: str = Field(..., description="Motivo justificado del traspaso o cambio de curso")
     effective_date: Optional[date] = Field(default_factory=date.today)
+    authorized_by: Optional[str] = Field("Coordinación Académica - Escuela San Bao", description="B.2: Autorizador responsable del cambio de curso")
+    authorization_code: Optional[str] = Field(None, description="B.2: Folio de autorización opcional")
     notes: Optional[str] = None
 
 
@@ -197,6 +199,109 @@ class EvaluateAdmissionInterviewRequest(BaseModel):
     life_record_notes: Optional[str] = Field(None, description="Descripción opcional para la Hoja de Vida del alumno")
     hoja_de_vida_descripcion: Optional[str] = Field(None, description="Alias de life_record_notes")
     rut: Optional[str] = Field(None, description="RUT confirmado en la entrevista para iniciar matrícula")
+
+
+# =============================================================================
+# FASE 3: ESQUEMAS DE GESTIÓN ACADÉMICA AVANZADA Y PUENTE CLÍNICO-ACADÉMICO
+# =============================================================================
+class MultiCohortEnrollmentRequest(BaseModel):
+    cohort_id: str = Field(..., description="ID de la cohorte/sección a inscribir simultáneamente")
+    enrollment_type: str = Field("TRANSITORIA", description="B.1: REGULAR, TRANSITORIA, RECUPERACION")
+    valid_from: Optional[date] = Field(default_factory=date.today, description="Inicio de vigencia")
+    valid_until: Optional[date] = Field(None, description="Término de vigencia")
+    origin_cohort_id: Optional[str] = Field(None, description="Cohorte de origen si aplica")
+    notes: Optional[str] = Field(None, description="Motivo o detalle de la inscripción simultánea")
+
+
+class AcademicIncidentCreateRequest(BaseModel):
+    student_id: str = Field(..., description="ID del alumno")
+    cohort_id: Optional[str] = None
+    course_id: Optional[str] = None
+    reported_by_id: Optional[str] = None
+    reported_by_name: str = Field("Docente Titular San Bao", description="Nombre del docente que registra la incidencia")
+    incident_date: Optional[date] = Field(default_factory=date.today)
+    title: str = Field(..., description="Título breve de la incidencia")
+    description: str = Field(..., description="Descripción detallada reportada por el docente")
+    category: Optional[str] = Field("ACADEMICA", description="ACADEMICA, CONDUCTUAL, ASISTENCIA, CLINICA, RECONOCIMIENTO")
+    severity: Optional[str] = Field("MEDIA", description="BAJA, MEDIA, ALTA")
+
+
+class AcademicIncidentUpdateByTeacherRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    reported_by_id: Optional[str] = None
+
+
+class AcademicIncidentModerateRequest(BaseModel):
+    decision: str = Field("VALIDADA_PUBLICADA", description="VALIDADA_PUBLICADA o RECHAZADA")
+    category: Optional[str] = Field(None, description="Tipificación validada: ACADEMICA, CONDUCTUAL, ASISTENCIA, CLINICA, RECONOCIMIENTO")
+    severity: Optional[str] = Field(None, description="Severidad validada: BAJA, MEDIA, ALTA")
+    reviewed_by_name: str = Field("Coordinación Académica San Bao", description="Responsable de Coordinación o Dirección que modera")
+    moderation_notes: Optional[str] = Field(None, description="Resolución o comentario de validación")
+
+
+class CourseApprovalRulesUpdateRequest(BaseModel):
+    requires_interview: Optional[bool] = Field(None, description="B.4: True si requiere entrevista de postulación, False para inscripción directa")
+    min_attendance_pct: Optional[float] = Field(None, ge=0.0, le=100.0, description="B.5: % de asistencia mínima parametrizable")
+    min_passing_grade: Optional[float] = Field(None, ge=1.0, le=7.0, description="B.5: Nota mínima de aprobación")
+    requires_grade_for_approval: Optional[bool] = Field(None, description="B.5: False para seminarios que aprueban solo por asistencia")
+    auto_issue_diploma: Optional[bool] = Field(None, description="B.5: Generación automática de diploma al aprobar")
+    practice_max_months: Optional[int] = Field(None, ge=1, le=36, description="B.8: Plazo máximo estimado de práctica en meses")
+
+
+class DirectShortCourseEnrollmentRequest(BaseModel):
+    rut: str = Field(..., description="RUT del participante")
+    first_name: str = Field(..., description="Nombres")
+    last_name: str = Field(..., description="Apellidos")
+    email: str = Field(..., description="Correo electrónico")
+    phone: Optional[str] = Field("+56 9 8000 0000")
+    program_id: str = Field(..., description="ID del curso corto o seminario (debe tener requires_interview = False)")
+    campus: Optional[str] = Field("SANTIAGO")
+
+
+class TutorSemesterEvaluationCreateRequest(BaseModel):
+    student_id: str = Field(..., description="ID del alumno en práctica")
+    tutor_id: Optional[str] = Field(None, description="ID o RUT del tutor clínico")
+    period_code: str = Field("2026-2", description="Período semestral ej: 2026-1, 2026-2")
+    specialty: str = Field("ACUPUNTURA", description="Especialidad clínica")
+    clinical_competency_score: float = Field(..., ge=1.0, le=7.0)
+    anamnesis_quality_score: float = Field(..., ge=1.0, le=7.0)
+    punctuality_ethics_score: float = Field(..., ge=1.0, le=7.0)
+    clinical_reports_required: int = Field(5, ge=0)
+    clinical_reports_delivered: int = Field(5, ge=0)
+    report_delivery_notes: Optional[str] = None
+    feedback: Optional[str] = None
+
+
+class StudentTutorEvaluationCreateRequest(BaseModel):
+    student_id: str = Field(..., description="ID del alumno que evalúa")
+    tutor_id: str = Field(..., description="ID o RUT del tutor evaluado")
+    period_code: str = Field("2026-2")
+    pedagogical_clarity_score: float = Field(..., ge=1.0, le=7.0)
+    supervision_support_score: float = Field(..., ge=1.0, le=7.0)
+    clinical_feedback_score: float = Field(..., ge=1.0, le=7.0)
+    confidential_comments: Optional[str] = None
+
+
+class ClinicalShiftBridgeClosureRequest(BaseModel):
+    idempotency_key: str = Field(..., description="C: Clave única de idempotencia del evento de cierre de sesión/turno")
+    student_id: str = Field(..., description="ID del alumno en práctica")
+    tutor_id: Optional[str] = Field(None, description="ID o RUT del tutor clínico que cierra y valida la sesión")
+    shift_id: Optional[str] = Field(None, description="ID del turno clínico cerrado")
+    session_id: Optional[str] = Field(None, description="ID de la atención clínica (ClinicalEncounter) cerrada")
+    specialty: str = Field("ACUPUNTURA", description="Especialidad: ACUPUNTURA, TUI_NA, FITOTERAPIA")
+    activity_date: Optional[date] = Field(default_factory=date.today)
+    hours_completed: int = Field(..., ge=1, le=24, description="Horas clínicas validadas a acumular")
+    tutor_evaluation_score: Optional[float] = Field(None, ge=1.0, le=7.0, description="Nota de evaluación de la sesión")
+    tutor_feedback: Optional[str] = Field(None, description="Retroalimentación clínica del tutor")
+    tutor_hourly_rate_clp: Optional[float] = Field(25000.0, ge=0.0, description="Valor hora del tutor para devengo de remuneraciones/honorarios")
+
+
+class ClinicalPracticeHourAdjustmentRequest(BaseModel):
+    delta_hours: int = Field(..., description="C: Ajuste auditable de horas (+N o -N) sin sobrescribir el registro original")
+    reason: str = Field(..., description="Motivo obligatorio del ajuste auditable")
+    adjusted_by_user_id: Optional[str] = Field("coordinacion@sanbao.cl", description="Responsable del ajuste")
+
 
 
 

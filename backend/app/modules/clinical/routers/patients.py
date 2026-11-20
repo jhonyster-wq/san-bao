@@ -88,3 +88,33 @@ def get_patient_access_logs(
             for log in logs
         ]
     )
+
+
+@router.get("/{patient_id}/portability-export", summary="M: Entrega y portabilidad de Ficha Clínica con verificación AES-256 y certificado de conservación por 15 años (Ley 20.584 y Ley 21.719)")
+def export_patient_clinical_record_portability(
+    patient_id: str,
+    request: Request,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.core.exceptions import PermissionDeniedException
+
+    service = ClinicalService(db)
+    try:
+        ip = request.client.host if request.client else None
+        ua = request.headers.get("user-agent")
+        package = service.export_patient_clinical_record_portability(
+            patient_id=patient_id,
+            user_id=current_user.id,
+            ip=ip,
+            ua=ua,
+        )
+        return APIResponse(
+            message="Paquete de portabilidad y entrega de ficha clínica generado conforme a Ley 20.584 y Ley 21.719",
+            data=package,
+        )
+    except PermissionDeniedException as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.message)
+    except EntityNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+

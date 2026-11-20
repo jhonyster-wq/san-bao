@@ -660,6 +660,257 @@ def test_coordinator_matriculas_panel_filters_and_summary(client: TestClient, db
     assert any(life_record_desc in entry["description"] for entry in lr_entries)
 
 
+def test_fase3_academic_advanced_and_idempotent_clinical_bridge(client: TestClient, db_session: Session):
+    """
+    Fase 3:
+    - B.1: Doble cohorte y asignaturas transitorias/recuperación con vigencia.
+    - B.2: Cambio de curso conservando historial académico y trazabilidad de autorizaciones.
+    - B.3: Incidencias académicas con flujo de moderación (Docente crea -> Pendiente -> Coordinación valida -> Inmutable para docente).
+    - B.4 y B.5: Cursos cortos sin entrevista (inscripción simplificada), reglas de aprobación parametrizables y generación automática de diploma.
+    - B.6: Historial de formación unificado.
+    - B.7 y B.8: Evaluaciones bidireccionales Tutor <-> Alumno con confidencialidad y alertas de práctica clínica.
+    - C: Puente Clínico-Académico idempotente (acumulación de horas al cierre de turno, ajustes auditables sin sobrescribir y devengo para honorarios).
+    """
+    token, instituto_id, _ = get_auth_token_and_instituto(client)
+    headers = {"Authorization": f"Bearer {token}", "X-Company-ID": instituto_id}
+
+    enr_res = client.get("/api/v1/academic/coordinator/enrollments", headers=headers)
+    assert enr_res.status_code == 200
+    diego = next(s for s in enr_res.json()["data"] if "Diego" in s["full_name"])
+    student_id = diego["student_id"]
+
+    cohorts_res = client.get("/api/v1/academic/coordinator/grading/cohorts", headers=headers)
+    cohorts = cohorts_res.json()["data"]
+    target_cohort_id = cohorts[-1]["cohort_id"]
+
+    # B.1: Inscribir simultáneamente en asignatura transitoria con período de vigencia
+    res_b1 = client.post(
+        f"/api/v1/academic/coordinator/students/{student_id}/cohort-enrollments",
+        headers=headers,
+        json={
+            "cohort_id": target_cohort_id,
+            "enrollment_type": "TRANSITORIA",
+            "valid_from": "2026-08-01",
+            "valid_until": "2026-12-31",
+            "notes": "Inscripción simultánea autorizada en asignatura transitoria de Fitoterapia.",
+        },
+    )
+    assert res_b1.status_code in (200, 201)
+    b1_data = res_b1.json()["data"]
+    assert b1_data["enrollment_type"] == "TRANSITORIA"
+    assert b1_data["valid_from"] == "2026-08-01"
+    assert b1_data["valid_until"] == "2026-12-31"
+    cohort_enrollment_id = b1_data["cohort_enrollment_id"]
+
+    # B.3: Flujo de moderación de incidencias académicas
+    res_inc = client.post(
+        "/api/v1/academic/coordinator/incidents",
+        headers=headers,
+        json={
+            "student_id": student_id,
+            "cohort_id": target_cohort_id,
+            "reported_by_name": "Prof. Zhiwei Chen",
+            "title": "Inasistencia a laboratorio de localización de puntos",
+            "description": "El alumno se retiró antes del cierre práctico sin aviso previo.",
+            "category": "ASISTENCIA",
+            "severity": "MEDIA",
+        },
+    )
+    assert res_inc.status_code == 201
+    inc_data = res_inc.json()["data"]
+    incident_id = inc_data["id"]
+    assert inc_data["status"] == "PENDIENTE_REVISION"
+    assert inc_data["is_editable_by_teacher"] is True
+
+    # Mientras está pendiente, el docente puede editarla
+    res_edit_ok = client.put(
+        f"/api/v1/academic/coordinator/incidents/{incident_id}/teacher-edit",
+        headers=headers,
+        json={"description": "El alumno se retiró 30 minutos antes del cierre práctico."},
+    )
+    assert res_edit_ok.status_code == 200
+
+    # Coordinación Académica revisa, valida, tipifica y publica en el expediente
+    res_mod = client.put(
+        f"/api/v1/academic/coordinator/incidents/{incident_id}/moderate",
+        headers=headers,
+        json={
+            "decision": "VALIDADA_PUBLICADA",
+            "category": "ACADEMICA",
+            "severity": "BAJA",
+            "reviewed_by_name": "Coordinación Académica San Bao",
+            "moderation_notes": "Validada y publicada en expediente tras conversar con docente.",
+        },
+    )
+    assert res_mod.status_code == 200
+    assert res_mod.json()["data"]["status"] == "VALIDADA_PUBLICADA"
+    assert res_mod.json()["data"]["is_editable_by_teacher"] is False
+
+    # Una vez validada, el docente NO puede modificarla (403 Forbidden)
+    res_edit_blocked = client.put(
+        f"/api/v1/academic/coordinator/incidents/{incident_id}/teacher-edit",
+        headers=headers,
+        json={"description": "Intento de modificación posterior a validación"},
+    )
+    assert res_edit_blocked.status_code == 403
+
+    # B.4 y B.5: Configurar curso corto sin entrevista y reglas de aprobación con diploma automático
+    programs_res = client.get("/api/v1/academic/programs", headers=headers)
+    tui_prog = next(p for p in programs_res.json()["data"] if "TUI" in p["code"])
+    res_rules = client.put(
+        f"/api/v1/academic/coordinator/programs/{tui_prog['id']}/approval-rules",
+        headers=headers,
+        json={
+            "requires_interview": False,
+            "min_attendance_pct": 80.0,
+            "min_passing_grade": 4.5,
+            "requires_grade_for_approval": True,
+            "auto_issue_diploma": True,
+        },
+    )
+    assert res_rules.status_code == 200
+    assert res_rules.json()["data"]["requires_interview"] is False
+    assert res_rules.json()["data"]["min_attendance_pct"] == 80.0
+
+    # Inscripción directa simplificada en curso corto que no requiere entrevista
+    res_direct = client.post(
+        "/api/v1/academic/coordinator/short-courses/direct-enroll",
+        headers=headers,
+        json={
+            "rut": "15.432.876-K",
+            "first_name": "Patricia",
+            "last_name": "Soto Henríquez",
+            "email": "patricia.seminario@sanbao.cl",
+            "program_id": tui_prog["id"],
+            "campus": "SANTIAGO",
+        },
+    )
+    assert res_direct.status_code == 201
+    assert res_direct.json()["data"]["simplified_direct_enrollment"] is True
+
+    # Evaluar aprobación y generación automática de diploma
+    res_eval_app = client.post(
+        f"/api/v1/academic/coordinator/cohort-enrollments/{cohort_enrollment_id}/evaluate-approval?attendance_percentage=92.0&final_grade=6.2",
+        headers=headers,
+    )
+    assert res_eval_app.status_code == 200
+    eval_app_data = res_eval_app.json()["data"]
+    assert eval_app_data["is_approved"] is True
+    assert eval_app_data["auto_issued_diploma"] is not None
+
+    # B.7: Evaluación semestral Tutor -> Alumno (con entrega de reportes clínicos) y Alumno -> Tutor (confidencial)
+    res_t2s = client.post(
+        "/api/v1/academic/coordinator/tutor-evaluations/tutor-to-student",
+        headers=headers,
+        json={
+            "student_id": student_id,
+            "tutor_id": "12.876.543-1",
+            "period_code": "2026-2",
+            "specialty": "ACUPUNTURA",
+            "clinical_competency_score": 6.5,
+            "anamnesis_quality_score": 6.3,
+            "punctuality_ethics_score": 6.8,
+            "clinical_reports_required": 5,
+            "clinical_reports_delivered": 5,
+            "feedback": "Cumple con los 5 reportes clínicos del semestre y excelente punción.",
+        },
+    )
+    assert res_t2s.status_code == 201
+    assert res_t2s.json()["data"]["clinical_reports_compliant"] is True
+
+    res_s2t = client.post(
+        "/api/v1/academic/coordinator/tutor-evaluations/student-to-tutor",
+        headers=headers,
+        json={
+            "student_id": student_id,
+            "tutor_id": "12.876.543-1",
+            "period_code": "2026-2",
+            "pedagogical_clarity_score": 6.8,
+            "supervision_support_score": 6.9,
+            "clinical_feedback_score": 6.7,
+            "confidential_comments": "Excelente guía clínica en diagnóstico por pulso.",
+        },
+    )
+    assert res_s2t.status_code == 201
+    assert res_s2t.json()["data"]["is_confidential"] is True
+
+    res_agg = client.get("/api/v1/academic/coordinator/tutor-evaluations/aggregated-report?period_code=2026-2", headers=headers)
+    assert res_agg.status_code == 200
+    agg_data = res_agg.json()["data"]
+    assert agg_data["confidentiality_enforced"] is True
+    assert agg_data["student_identities_exposed"] is False
+    assert len(agg_data["tutors"]) >= 1
+
+    # B.8: Alertas de práctica clínica
+    res_alerts = client.get("/api/v1/academic/coordinator/practice-alerts", headers=headers)
+    assert res_alerts.status_code == 200
+    assert "total_students_with_alerts" in res_alerts.json()["data"]
+
+    # C: Puente Clínico-Académico Idempotente al cierre de turno/sesión y ajuste auditable
+    idem_key = "SHIFT-CLOSE-2026-11-18-TURNO-AM-001"
+    res_bridge_1 = client.post(
+        "/api/v1/academic/coordinator/clinical-bridge/close-session",
+        headers=headers,
+        json={
+            "idempotency_key": idem_key,
+            "student_id": student_id,
+            "tutor_id": "12.876.543-1",
+            "shift_id": "TUR-ACU-STGO-AM-01",
+            "specialty": "ACUPUNTURA",
+            "hours_completed": 4,
+            "tutor_evaluation_score": 6.6,
+            "tutor_feedback": "Sesión clínica de Acupuntura cerrada y validada por tutor.",
+            "tutor_hourly_rate_clp": 25000,
+        },
+    )
+    assert res_bridge_1.status_code == 200
+    b_data_1 = res_bridge_1.json()["data"]
+    assert b_data_1["idempotent_replay"] is False
+    hours_after_first = b_data_1["total_accumulated_hours"]
+    practice_hour_id = b_data_1["practice_hour_id"]
+    assert b_data_1["remuneration_accrual"]["gross_amount_clp"] == 100000.0
+
+    # Reenviar el mismo evento con el mismo idempotency_key -> NO debe duplicar las horas
+    res_bridge_2 = client.post(
+        "/api/v1/academic/coordinator/clinical-bridge/close-session",
+        headers=headers,
+        json={
+            "idempotency_key": idem_key,
+            "student_id": student_id,
+            "tutor_id": "12.876.543-1",
+            "shift_id": "TUR-ACU-STGO-AM-01",
+            "specialty": "ACUPUNTURA",
+            "hours_completed": 4,
+        },
+    )
+    assert res_bridge_2.status_code == 200
+    b_data_2 = res_bridge_2.json()["data"]
+    assert b_data_2["idempotent_replay"] is True
+    assert b_data_2["total_accumulated_hours"] == hours_after_first
+
+    # Ajuste auditable sin sobrescribir el registro original (+2 hrs por extensión de jornada)
+    res_adj = client.post(
+        f"/api/v1/academic/coordinator/clinical-bridge/hours/{practice_hour_id}/adjust",
+        headers=headers,
+        json={
+            "delta_hours": 2,
+            "reason": "Extensión documentada de turno vespertino con pacientes adicionales",
+            "adjusted_by_user_id": "coordinacion@sanbao.cl",
+        },
+    )
+    assert res_adj.status_code == 201
+    adj_data = res_adj.json()["data"]
+    assert adj_data["original_hours_preserved"] == 4
+    assert adj_data["delta_hours"] == 2
+    assert adj_data["total_accumulated_hours"] == hours_after_first + 2
+
+    # B.6: Verificar historial integral de formación
+    res_hist = client.get(f"/api/v1/academic/coordinator/students/{student_id}/training-history", headers=headers)
+    assert res_hist.status_code == 200
+    assert res_hist.json()["data"]["clinical_practice_history"]["total_accredited_hours"] == hours_after_first + 2
+
+
+
 
 
 

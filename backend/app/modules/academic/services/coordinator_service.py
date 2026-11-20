@@ -56,9 +56,10 @@ class AcademicCoordinatorService:
     def ensure_sample_coordinator_data(self):
         """Garantiza la existencia de datos institucionales de muestra para Coordinación Académica."""
         if (
-            AcademicCoordinatorService._coord_seeded
-            and self.db.query(Student.id).filter(Student.student_number == "MAT-2026-0001").first() is not None
+            self.db.query(Student.id).filter(Student.student_number == "MAT-2026-0001").first() is not None
+            and self.db.query(Program.id).filter(Program.code == "DIP-MTC-01").first() is not None
         ):
+            AcademicCoordinatorService._coord_seeded = True
             return
         from app.modules.academic.services.academic_service import AcademicService
         from app.modules.institutional.models.campus import Campus, Room

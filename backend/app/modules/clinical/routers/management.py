@@ -1519,6 +1519,17 @@ def get_monthly_shifts_calendar(
         if sp_norm:
             month_shifts = [s for s in month_shifts if s.shift_period == sp_norm]
 
+    # Pre-cargar diccionarios en memoria para evitar consultas N+1 por cada turno del mes
+    campuses_map = {c.id: c for c in db.query(Campus).all()}
+    rooms_map = {r.id: r for r in db.query(Room).all()}
+    practitioners_map = {p.id: p for p in db.query(Practitioner).all()}
+    person_ids = {p.person_id for p in practitioners_map.values() if p.person_id}
+    persons_map = (
+        {pe.id: pe for pe in db.query(Person).filter(Person.id.in_(person_ids)).all()}
+        if person_ids
+        else {}
+    )
+
     # Agrupar por fecha
     shifts_by_date = {}
     for s in month_shifts:
@@ -1526,12 +1537,12 @@ def get_monthly_shifts_calendar(
         if d_str not in shifts_by_date:
             shifts_by_date[d_str] = []
 
-        campus = db.query(Campus).filter(Campus.id == s.campus_id).first()
-        room = db.query(Room).filter(Room.id == s.room_id).first() if s.room_id else None
-        practitioner = db.query(Practitioner).filter(Practitioner.id == s.practitioner_id).first() if s.practitioner_id else None
-        person = db.query(Person).filter(Person.id == practitioner.person_id).first() if practitioner else None
-        sub_practitioner = db.query(Practitioner).filter(Practitioner.id == s.substitute_practitioner_id).first() if s.substitute_practitioner_id else None
-        sub_person = db.query(Person).filter(Person.id == sub_practitioner.person_id).first() if sub_practitioner else None
+        campus = campuses_map.get(s.campus_id)
+        room = rooms_map.get(s.room_id) if s.room_id else None
+        practitioner = practitioners_map.get(s.practitioner_id) if s.practitioner_id else None
+        person = persons_map.get(practitioner.person_id) if practitioner else None
+        sub_practitioner = practitioners_map.get(s.substitute_practitioner_id) if s.substitute_practitioner_id else None
+        sub_person = persons_map.get(sub_practitioner.person_id) if sub_practitioner else None
 
         shifts_by_date[d_str].append({
             "id": s.id,

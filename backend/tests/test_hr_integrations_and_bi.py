@@ -43,7 +43,7 @@ def test_context():
             "rut": docente_rut,
             "first_name": "Marcela",
             "last_name": "Pérez",
-            "email": "marcela.perez@sanbao.cl",
+            "email": "marcela.perez.hrtest@sanbao.cl",
             "gender": "FEMALE",
         },
     )
@@ -51,8 +51,13 @@ def test_context():
         docente_person = res_person.json()["data"]
     else:
         # Ya existe
-        list_p = client.get("/api/v1/institutional/people", headers=auth_headers).json()["data"]["items"]
-        docente_person = next(p for p in list_p if "14234567" in p["rut"] or "14.234.567-6" in p["rut"])
+        list_p = client.get("/api/v1/institutional/people?page=1&page_size=100", headers=auth_headers).json()["data"]["items"]
+        docente_person = next(
+            p for p in list_p
+            if "14234567" in p["rut"]
+            or "14.234.567-6" in p["rut"]
+            or "marcela.perez" in (p.get("email") or "")
+        )
 
     return {
         "auth_headers": auth_headers,
@@ -684,8 +689,9 @@ def test_fase8_financial_intelligence_kpis_aes256_separate_keys_15y_retention_an
     port_data = port_res.json()["data"]
     assert port_data["minimum_retention_years"] == 15
     assert port_data["encounters_count"] >= 1
-    assert port_data["encounters"][0]["aes256_encrypted_at_rest"] is True
-    assert port_data["encounters"][0]["aes256_integrity_verified"] is True
+    created_enc = next(e for e in port_data["encounters"] if e["encounter_id"] == encounter_id)
+    assert created_enc["aes256_encrypted_at_rest"] is True
+    assert created_enc["aes256_integrity_verified"] is True
     assert len(port_data["portability_package_sha256"]) == 64
 
 

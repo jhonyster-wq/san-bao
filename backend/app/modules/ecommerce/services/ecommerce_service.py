@@ -312,12 +312,17 @@ class ECommerceHubService:
         },
     }
 
+    _ecommerce_table_checked: bool = False
+    _ecommerce_seeded: bool = False
+
     def __init__(self, db: Session):
         self.db = db
-        try:
-            Base.metadata.create_all(bind=self.db.get_bind(), tables=[EcommercePromotion.__table__])
-        except Exception:
-            pass
+        if not ECommerceHubService._ecommerce_table_checked:
+            try:
+                Base.metadata.create_all(bind=self.db.get_bind(), tables=[EcommercePromotion.__table__])
+                ECommerceHubService._ecommerce_table_checked = True
+            except Exception:
+                pass
 
     def _get_instituto_company(self) -> Company:
         comp = (
@@ -356,9 +361,16 @@ class ECommerceHubService:
         return period
 
     def ensure_sample_ecommerce_data(self) -> None:
+        if (
+            self.db.query(Product.id).filter(Product.sku == "SEM-PULSO-2026").first() is not None
+            and self.db.query(Order.id).filter(Order.payment_status == "PAID").first() is not None
+        ):
+            ECommerceHubService._ecommerce_seeded = True
+            return
         comp = self._get_instituto_company()
         if not comp:
             return
+        ECommerceHubService._ecommerce_seeded = True
 
         # 1. Asegurar programas académicos y aulas LMS para los 6 ítems del catálogo comercial
         sample_products = [
@@ -1451,6 +1463,28 @@ class ECommerceHubService:
         receipts_list = []
         total_revenue_clp = Decimal(0)
 
+        customer_person_ids = {o.customer_person_id for o in paid_orders if o.customer_person_id}
+        students_by_person = (
+            {
+                s.person_id: s
+                for s in self.db.query(Student)
+                .filter(Student.person_id.in_(customer_person_ids), Student.deleted_at.is_(None))
+                .all()
+            }
+            if customer_person_ids
+            else {}
+        )
+        users_by_person = (
+            {
+                u.person_id: u
+                for u in self.db.query(User)
+                .filter(User.person_id.in_(customer_person_ids), User.deleted_at.is_(None))
+                .all()
+            }
+            if customer_person_ids
+            else {}
+        )
+
         for o in paid_orders:
             total_revenue_clp += Decimal(o.total_amount or 0)
             first_item = o.items[0] if o.items else None
@@ -1466,20 +1500,9 @@ class ECommerceHubService:
             tx = o.transactions[0] if o.transactions else None
             raw = (tx.raw_response or {}) if tx and isinstance(tx.raw_response, dict) else {}
 
-            # Buscar ficha Student y User asociada al comprador
-            student = None
-            user = None
-            if o.customer_person_id:
-                student = (
-                    self.db.query(Student)
-                    .filter(Student.person_id == o.customer_person_id, Student.deleted_at.is_(None))
-                    .first()
-                )
-                user = (
-                    self.db.query(User)
-                    .filter(User.person_id == o.customer_person_id, User.deleted_at.is_(None))
-                    .first()
-                )
+            # Buscar ficha Student y User asociada al comprador en memoria
+            student = students_by_person.get(o.customer_person_id) if o.customer_person_id else None
+            user = users_by_person.get(o.customer_person_id) if o.customer_person_id else None
 
             student_number = raw.get("student_number") or (student.student_number if student else "MAT-2026-WEB")
             dte_folio = raw.get("dte_folio") or 41051
@@ -1548,29 +1571,32 @@ class ECommerceHubService:
             for pr in promotions_q
         ]
 
-        # Estado de sincronización con el Módulo Académico y LMS
+        # Estado de sincronización con el Módulo Académico y LMS (precargado en bloque sin N+1)
+        from sqlalchemy import func
+
+        programs_by_code = {
+            pr.code: pr
+            for pr in self.db.query(Program).filter(Program.deleted_at.is_(None)).all()
+        }
+        acad_counts_map = dict(
+            self.db.query(Enrollment.program_id, func.count(Enrollment.id))
+            .filter(Enrollment.deleted_at.is_(None))
+            .group_by(Enrollment.program_id)
+            .all()
+        )
+        lms_counts_map = dict(
+            self.db.query(LMSEnrollment.course_id, func.count(LMSEnrollment.id))
+            .filter(LMSEnrollment.deleted_at.is_(None))
+            .group_by(LMSEnrollment.course_id)
+            .all()
+        )
+
         academic_sync_items = []
         for p in products:
             meta = self._parse_product_metadata(p)
-            prog = (
-                self.db.query(Program)
-                .filter(Program.code == meta["program_code"], Program.deleted_at.is_(None))
-                .first()
-            )
-            acad_enrollments_count = 0
-            if prog:
-                acad_enrollments_count = (
-                    self.db.query(Enrollment)
-                    .filter(Enrollment.program_id == prog.id, Enrollment.deleted_at.is_(None))
-                    .count()
-                )
-            lms_enrollments_count = 0
-            if p.lms_course_id:
-                lms_enrollments_count = (
-                    self.db.query(LMSEnrollment)
-                    .filter(LMSEnrollment.course_id == p.lms_course_id, LMSEnrollment.deleted_at.is_(None))
-                    .count()
-                )
+            prog = programs_by_code.get(meta["program_code"])
+            acad_enrollments_count = acad_counts_map.get(prog.id, 0) if prog else 0
+            lms_enrollments_count = lms_counts_map.get(p.lms_course_id, 0) if p.lms_course_id else 0
             academic_sync_items.append({
                 "product_sku": p.sku,
                 "product_name": p.name,

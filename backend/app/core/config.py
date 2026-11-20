@@ -9,12 +9,38 @@ _DEFAULT_SQLITE_PATH = os.path.join(_PROJECT_ROOT, "sanbao_dev.db")
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Sistema Integral San Bao"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str = "development"  # Valores: "development", "staging", "production"
     DEBUG: bool = True
     API_V1_STR: str = "/api/v1"
 
-    # Mantener habilitado el selector de ingreso rápido de desarrollo en el login
+    # Interruptores por ambiente (Testing/Staging vs. Producción)
+    # Si ENABLE_DEV_LOGIN no se fuerza por variable de entorno, se desactiva automáticamente cuando ENVIRONMENT == "production"
     ENABLE_DEV_LOGIN: bool = True
+    AUTO_SEED_DEMO_DATA: bool = True
+    OUTBOUND_NOTIFICATIONS_SAFE_MODE: bool = True
+    SAFE_MODE_REDIRECT_EMAIL: str = "qa@prismadigital.cl"
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.strip().lower() in ("production", "prod")
+
+    @property
+    def effective_enable_dev_login(self) -> bool:
+        if self.is_production:
+            return False
+        return bool(self.ENABLE_DEV_LOGIN)
+
+    @property
+    def effective_auto_seed_demo_data(self) -> bool:
+        if self.is_production:
+            return False
+        return bool(self.AUTO_SEED_DEMO_DATA)
+
+    @property
+    def effective_outbound_safe_mode(self) -> bool:
+        if self.is_production:
+            return False
+        return bool(self.OUTBOUND_NOTIFICATIONS_SAFE_MODE)
 
     # Seguridad JWT
     SECRET_KEY: str = "san_bao_super_secret_development_key_change_in_production_9988776655"

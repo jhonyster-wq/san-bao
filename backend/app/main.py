@@ -175,21 +175,35 @@ def favicon():
     return serve_logo()
 
 
+_APP_HTML_CACHE: dict = {"mtime": 0.0, "raw_bytes": b"", "gzip_bytes": b""}
+
+
 @app.get("/app", tags=["Frontend Web"])
-def serve_frontend_app():
-    """Sirve la interfaz web interactiva del Sistema Integral San Bao."""
-    # Buscar archivo HTML compilado / distribuible
+def serve_frontend_app(request: Request):
+    """Sirve la interfaz web interactiva del Sistema Integral San Bao con caché GZip en memoria."""
+    import gzip
+    from fastapi.responses import Response
+
     candidates = [
         os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist/index.html")),
         os.path.abspath(os.path.join(os.getcwd(), "frontend/dist/index.html")),
     ]
     for path in candidates:
         if os.path.exists(path):
-            return FileResponse(
-                path,
-                media_type="text/html",
-                headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
-            )
+            mtime = os.path.getmtime(path)
+            if mtime != _APP_HTML_CACHE["mtime"] or not _APP_HTML_CACHE["raw_bytes"]:
+                with open(path, "rb") as f:
+                    raw = f.read()
+                _APP_HTML_CACHE["mtime"] = mtime
+                _APP_HTML_CACHE["raw_bytes"] = raw
+                _APP_HTML_CACHE["gzip_bytes"] = gzip.compress(raw, compresslevel=5)
+
+            headers = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Vary": "Accept-Encoding"}
+            accept_enc = request.headers.get("accept-encoding", "")
+            if "gzip" in accept_enc:
+                headers["Content-Encoding"] = "gzip"
+                return Response(content=_APP_HTML_CACHE["gzip_bytes"], media_type="text/html; charset=utf-8", headers=headers)
+            return Response(content=_APP_HTML_CACHE["raw_bytes"], media_type="text/html; charset=utf-8", headers=headers)
     return {"message": "Interfaz frontend disponible en /frontend/dist/index.html"}
 
 

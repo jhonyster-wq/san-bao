@@ -148,6 +148,7 @@ class AcademicService:
 
     _cols_checked: bool = False
     _programs_seeded: bool = False
+    _teachers_synced: bool = False
 
     def _ensure_course_columns(self):
         """Garantiza que academic.courses y academic.programs tengan las columnas requeridas (ejecutado 1 vez por proceso)."""
@@ -415,12 +416,17 @@ class AcademicService:
         from app.modules.hr.services import HRHubService
         from datetime import date
 
+        if self.db.query(HREmployee.id).filter(HREmployee.is_active == True).count() >= 5:
+            AcademicService._teachers_synced = True
+            return
+
         ensure_sample_tutors(self.db)
         hr_svc = HRHubService(self.db)
         try:
             hr_svc.ensure_sample_hr_data()
         except Exception:
             self.db.rollback()
+        AcademicService._teachers_synced = True
 
         instituto, clinica = hr_svc._get_instituto_and_clinica()
         comp_default = instituto or self.db.query(Company).first()
@@ -551,10 +557,10 @@ class AcademicService:
 
         self._ensure_course_columns()
         if (
-            AcademicService._programs_seeded
-            and self.db.query(Program.id).filter(Program.code == "DIP-MTC-01").first() is not None
+            self.db.query(Program.id).filter(Program.code == "DIP-MTC-01").first() is not None
             and self.db.query(Course.id).filter(Course.code == "MTC-101").first() is not None
         ):
+            AcademicService._programs_seeded = True
             return
         self._sync_teachers_with_active_hr()
         AcademicService._programs_seeded = True

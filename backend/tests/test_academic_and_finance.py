@@ -44,7 +44,7 @@ def test_academic_curriculum_and_program_setup(client):
         "/api/v1/academic/programs/courses",
         headers=headers,
         json={
-            "code": "MTC-101",
+            "code": "MTC-101-PRO",
             "name": "Fundamentos de Medicina Tradicional China",
             "theoretical_hours": 60,
             "practical_hours": 20,
@@ -250,8 +250,9 @@ def test_cohort_evaluation_and_grading_flow(client):
     assert cohort_res.status_code == 201
     cohort_id = cohort_res.json()["data"]["id"]
 
-    # 3. Obtener el estudiante y su matrícula
-    student = client.get("/api/v1/academic/students", headers=headers).json()["data"][0]
+    # 3. Obtener el estudiante que tiene compromiso financiero creado en test_full_enrollment_with_automatic_tuition_commitment
+    students = client.get("/api/v1/academic/students", headers=headers).json()["data"]
+    student = next((s for s in students if s.get("student_number") == "SANBAO-2026-001"), students[-1])
     student_id = student["id"]
 
     # Matricular en la cohorte
@@ -322,7 +323,14 @@ def test_clinical_practice_hours_logging(client):
     headers = {"Authorization": f"Bearer {token}", "X-Company-ID": instituto_id}
 
     students = client.get("/api/v1/academic/students", headers=headers).json()["data"]
-    student_id = students[0]["id"]
+    student = next((s for s in students if s.get("student_number") == "SANBAO-2026-001"), students[-1])
+    student_id = student["id"]
+
+    # Consultar horas previas antes de acreditar
+    pre_summary = client.get(
+        f"/api/v1/academic/students/{student_id}/clinical-hours/summary",
+        headers=headers,
+    ).json()["data"]["total_approved_hours"]
 
     # Usar al administrador como tutor clínico
     login_info = client.get("/api/v1/institutional/auth/me", headers=headers).json()["data"]
@@ -356,13 +364,13 @@ def test_clinical_practice_hours_logging(client):
     )
     assert hours_res2.status_code == 201
 
-    # Consultar resumen acumulado: debe sumar 7 horas
+    # Consultar resumen acumulado: debe sumar +7 horas adicionales
     summary_res = client.get(
         f"/api/v1/academic/students/{student_id}/clinical-hours/summary",
         headers=headers,
     )
     assert summary_res.status_code == 200
-    assert summary_res.json()["data"]["total_approved_hours"] == 7
+    assert summary_res.json()["data"]["total_approved_hours"] == pre_summary + 7
 
 
 def test_fase5_finance_exemptions_packs_reversals_oc_3way_reconciliation_dte_and_honorarios(client, db_session):

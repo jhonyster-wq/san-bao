@@ -31312,6 +31312,36 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
       closeSsoLoginModal();
     }
 
+    async function syncRuntimeEnvironmentConfig() {
+      try {
+        const res = await fetch('/api/v1/institutional/auth/runtime-config');
+        if (!res.ok) return;
+        const json = await res.json();
+        const cfg = (json && json.data) ? json.data : {};
+        window.sanBaoRuntimeConfig = cfg;
+
+        const devPanel = document.getElementById('sso-dev-quick-access-panel');
+        const passHint = document.getElementById('sso-demo-password-hint');
+        const idInput = document.getElementById('sso-login-identifier');
+        const passInput = document.getElementById('sso-login-password');
+        const envBadge = document.getElementById('sso-env-badge');
+
+        if (cfg.is_production || cfg.enable_dev_login === false) {
+          if (devPanel) devPanel.classList.add('hidden');
+          if (passHint) passHint.classList.add('hidden');
+          if (idInput && idInput.value === 'admin@sanbao.cl') idInput.value = '';
+          if (passInput && passInput.value === 'SanBao#2026') passInput.value = '';
+        } else {
+          if (devPanel) devPanel.classList.remove('hidden');
+          if (passHint) passHint.classList.remove('hidden');
+          if (envBadge && cfg.environment) {
+            envBadge.textContent = `1 clic • ${String(cfg.environment).toUpperCase()}`;
+          }
+        }
+      } catch (e) {}
+    }
+    document.addEventListener('DOMContentLoaded', syncRuntimeEnvironmentConfig);
+
     function openSsoLoginModal() {
       const modal = document.getElementById('sso-login-overlay');
       const errBox = document.getElementById('sso-login-error');
@@ -32096,6 +32126,8 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
     // REQUERIMIENTO 2: LECTOR QR MINSAL DEL ALUMNO Y PAGO DE CUOTA ONLINE
     // =========================================================================
     function updateStudentMinsalLiveClock() {
+      const studentTab = document.getElementById('tab-student');
+      if (studentTab && studentTab.classList.contains('hidden')) return;
       const el = document.getElementById('st-qr-live-datetime');
       if (!el) return;
       const now = new Date();
@@ -32981,11 +33013,16 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-      if (typeof renderWeeklyBookingSchedule === 'function') renderWeeklyBookingSchedule();
-      if (typeof renderCmWeeklyShiftStrips === 'function') renderCmWeeklyShiftStrips();
-      if (typeof loadClinicalPaymentRequests === 'function') loadClinicalPaymentRequests();
-      if (typeof loadClinicalOverbookings === 'function') loadClinicalOverbookings();
-      if (typeof loadShiftClosureAffectedPatients === 'function') loadShiftClosureAffectedPatients();
+      // Inicializar grillas clínicas solo cuando la pestaña clínica esté activa (evita trabajo de red y DOM durante el login inicial)
+      const activePane = document.querySelector('.tab-pane:not(.hidden)');
+      const activeId = activePane ? activePane.id : '';
+      if (activeId === 'tab-clinical' || activeId === 'tab-clinical-management') {
+        if (typeof renderWeeklyBookingSchedule === 'function') renderWeeklyBookingSchedule();
+        if (typeof renderCmWeeklyShiftStrips === 'function') renderCmWeeklyShiftStrips();
+        if (typeof loadClinicalPaymentRequests === 'function') loadClinicalPaymentRequests();
+        if (typeof loadClinicalOverbookings === 'function') loadClinicalOverbookings();
+        if (typeof loadShiftClosureAffectedPatients === 'function') loadShiftClosureAffectedPatients();
+      }
     });
   </script>
 
@@ -33036,7 +33073,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
             <img src="/static/img/logo_sanbao.png" alt="San Bao - Medicina China Clásica" class="h-full w-full object-contain" />
           </div>
           <span class="inline-block px-3.5 py-0.5 rounded-full bg-white/90 border border-sky-200 text-[11px] text-[#1A56B2] font-mono font-semibold tracking-widest shadow-2xs">
-            三寶 • 精 Jing • 氣 Qi • 神 Shen
+            精 Jing • 氣 Qi • 神 Shen
           </span>
           <div>
             <h1 class="brand-serif font-extrabold text-xl tracking-wider text-[#142B46] leading-tight">SAN BAO</h1>
@@ -33088,7 +33125,7 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
               <label for="sso-login-password" class="block font-bold text-slate-700">
                 Contraseña
               </label>
-              <span class="text-[10px] text-slate-400">
+              <span id="sso-demo-password-hint" class="text-[10px] text-slate-400">
                 Clave: <code class="font-mono font-bold text-[#1A56B2] bg-sky-50 border border-sky-100 px-1.5 py-0.5 rounded">SanBao#2026</code>
               </span>
             </div>
@@ -33130,14 +33167,14 @@ Ahora figurará en el turno asistencial bajo la tutela del docente correspondien
         </form>
       </div>
 
-      <!-- 3. ABAJO: ACCESO RÁPIDO DESARROLLO -->
-      <div class="px-6 pb-6 pt-4 bg-[#F4F8FD] border-t border-sky-100 space-y-2">
+      <!-- 3. ABAJO: ACCESO RÁPIDO DESARROLLO (CONTROLADO POR INTERRUPTOR ENVIRONMENT / ENABLE_DEV_LOGIN) -->
+      <div id="sso-dev-quick-access-panel" class="px-6 pb-6 pt-4 bg-[#F4F8FD] border-t border-sky-100 space-y-2">
         <div class="flex items-center justify-between gap-2">
           <label for="sso-dev-profile-combobox" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-[#3988DB]"></span>
             <span>🛠️ Acceso Rápido Desarrollo (Perfiles y Portales)</span>
           </label>
-          <span class="text-[10px] font-semibold text-sky-600 bg-sky-100/80 px-2 py-0.5 rounded-full">1 clic</span>
+          <span id="sso-env-badge" class="text-[10px] font-semibold text-sky-600 bg-sky-100/80 px-2 py-0.5 rounded-full">1 clic • DEMO/TESTING</span>
         </div>
 
         <div class="flex items-center gap-2">

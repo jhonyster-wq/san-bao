@@ -381,8 +381,39 @@ def create_security_incident(
     )
 
 
+@router.get("/runtime-config", summary="Interruptor de Configuración de Ambiente (Testing/Staging vs. Producción)")
+def get_runtime_environment_config():
+    """
+    Expone los interruptores públicos de interfaz según el ambiente activo (ENVIRONMENT):
+    - development / staging: habilita selector de Acceso Rápido 1-clic, pistas de clave demo y modo seguro de notificaciones.
+    - production: oculta automáticamente el selector de Acceso Rápido 1-clic, oculta pistas de clave demo y activa conectores vivos.
+    """
+    from app.core.config import settings
+
+    return APIResponse(
+        message=f"Configuración de ejecución activa ({settings.ENVIRONMENT})",
+        data={
+            "project_name": settings.PROJECT_NAME,
+            "environment": settings.ENVIRONMENT.strip().lower(),
+            "is_production": settings.is_production,
+            "enable_dev_login": settings.effective_enable_dev_login,
+            "show_demo_password_hint": not settings.is_production,
+            "auto_seed_demo_data": settings.effective_auto_seed_demo_data,
+            "outbound_notifications_safe_mode": settings.effective_outbound_safe_mode,
+            "safe_mode_redirect_email": settings.SAFE_MODE_REDIRECT_EMAIL if settings.effective_outbound_safe_mode else None,
+        },
+    )
+
+
 @router.get("/sso-test-users", summary="Directorio de usuarios de prueba para Login Único SSO de los 6 Portales")
 def list_sso_test_users():
+    from app.core.config import settings
+
+    if not settings.effective_enable_dev_login:
+        return APIResponse(
+            message="Directorio de usuarios de demostración deshabilitado en ambiente de Producción",
+            data=[],
+        )
     return APIResponse(
         message="Usuarios de prueba habilitados para el Ingreso Único (SSO) por Portal",
         data=SSO_PORTAL_DIRECTORY,

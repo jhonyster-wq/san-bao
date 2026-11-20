@@ -173,3 +173,40 @@ def test_fase2_master_identity_multirole_cost_centers_and_rbac_anamnesis_guard(c
     )
     assert denied_log is not None
 
+
+def test_runtime_environment_config_switch(client, monkeypatch):
+    """
+    Verifica que el interruptor por configuración (ENVIRONMENT=development vs ENVIRONMENT=production)
+    active o desactive automáticamente el selector de Acceso Rápido 1-clic y el directorio de usuarios demo.
+    """
+    from app.core.config import settings
+
+    # 1. En desarrollo / testing (por defecto): enable_dev_login = True
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "ENABLE_DEV_LOGIN", True)
+    res_dev = client.get("/api/v1/institutional/auth/runtime-config")
+    assert res_dev.status_code == 200
+    data_dev = res_dev.json()["data"]
+    assert data_dev["is_production"] is False
+    assert data_dev["enable_dev_login"] is True
+    assert data_dev["show_demo_password_hint"] is True
+
+    res_users_dev = client.get("/api/v1/institutional/auth/sso-test-users")
+    assert res_users_dev.status_code == 200
+    assert len(res_users_dev.json()["data"]) > 0
+
+    # 2. En producción (ENVIRONMENT=production): oculta automáticamente dev login y vacía lista demo
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    res_prod = client.get("/api/v1/institutional/auth/runtime-config")
+    assert res_prod.status_code == 200
+    data_prod = res_prod.json()["data"]
+    assert data_prod["is_production"] is True
+    assert data_prod["enable_dev_login"] is False
+    assert data_prod["show_demo_password_hint"] is False
+    assert data_prod["outbound_notifications_safe_mode"] is False
+
+    res_users_prod = client.get("/api/v1/institutional/auth/sso-test-users")
+    assert res_users_prod.status_code == 200
+    assert res_users_prod.json()["data"] == []
+
+
